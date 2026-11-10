@@ -1,0 +1,54 @@
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# ── Virtual environment ───────────────────────────────────
+.venv/
+venv/
+ENV/
+env/
+
+# ── Pytest / coverage ─────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ── Data folders (keep structure, ignore contents) ────────
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# ── Spark artefacts ───────────────────────────────────────
+spark-warehouse/
+metastore_db/
+derby.log
+
+# ── Jupyter notebooks checkpoints ────────────────────────
+.ipynb_checkpoints/
+
+# ── OS files ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / editor ─────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Environment / secrets ─────────────────────────────────
+.env
+.env.*
+*.secret
+
