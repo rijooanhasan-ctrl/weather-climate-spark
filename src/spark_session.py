@@ -235,13 +235,13 @@ def get_spark_session(app_name: str = APP_NAME) -> SparkSession:
         return spark
 
     except Exception as exc:  # noqa: BLE001
-        print(
+        friendly_message = (
             "\n[ERROR] Could not create a SparkSession.\n"
             f"  Root cause: {exc}\n\n"
             "  Common fixes:\n"
             "  1. Make sure Java 11, 17, or 21 is installed and JAVA_HOME is valid.\n"
             "  2. Run: pip install pyspark==3.5.3\n"
-            "  3. On Windows, verify no firewall blocks 127.0.0.1 loopback sockets.\n",
-            file=sys.stderr,
+            "  3. On Windows, verify no firewall blocks 127.0.0.1 loopback sockets.\n"
         )
-        sys.exit(1)
+        print(friendly_message, file=sys.stderr)
+        raise RuntimeError(friendly_message) from exc

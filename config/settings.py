@@ -35,3 +35,23 @@ STANDARD_COLUMNS: dict[str, str] = {
     "pressure":    "pressure",
 }
 
+# ── Default Cities for Dataset Acquisition ────────────────────────────────────
+# Exactly 8 diverse meteorological regions across India
+DEFAULT_CITIES: list[dict[str, str | float]] = [
+    {"name": "Bengaluru", "latitude": 12.9716, "longitude": 77.5946},
+    {"name": "Mumbai",    "latitude": 19.0760, "longitude": 72.8777},
+    {"name": "Delhi",     "latitude": 28.6139, "longitude": 77.2090},
+    {"name": "Chennai",   "latitude": 13.0827, "longitude": 80.2707},
+    {"name": "Kolkata",   "latitude": 22.5726, "longitude": 88.3639},
+    {"name": "Hyderabad", "latitude": 17.3850, "longitude": 78.4867},
+    {"name": "Jaipur",    "latitude": 26.9124, "longitude": 75.7873},
+    {"name": "Shillong",  "latitude": 25.5788, "longitude": 91.8933},
+]
+
+# ── Primary Dataset Date Range & Storage ──────────────────────────────────────
+DATASET_START_DATE: str = "2010-01-01"
+DATASET_END_DATE: str = "2025-12-31"
+PRIMARY_DATASET_PATH: Path = RAW_DATA_DIR / "india_weather_daily.csv"
+RAW_VIEW_NAME: str = "weather_raw"
+
+

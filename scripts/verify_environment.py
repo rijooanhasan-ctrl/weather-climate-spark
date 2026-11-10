@@ -228,9 +228,12 @@ def check_spark_sql() -> bool:
             spark.stop()
             return False
 
+    except RuntimeError as err:
+        print(f"\n{err}", file=sys.stderr)
+        _fail("SparkSession creation", "RuntimeError during session startup")
+        return False
     except SystemExit:
-        # get_spark_session() already printed a friendly message and called sys.exit.
-        _fail("SparkSession creation", "see error above")
+        _fail("SparkSession creation", "SystemExit during session startup")
         return False
     except Exception as exc:  # noqa: BLE001
         _fail("Spark SQL query", str(exc))
