@@ -97,9 +97,8 @@ def find_java_home() -> str | None:
 
     Search order:
       a) existing JAVA_HOME environment variable (if valid and contains bin/java[.exe])
-      b) Windows: scan C:\\Program Files\\Java\\jdk-*,
-         C:\\Program Files\\Eclipse Adoptium\\jdk-*,
-         C:\\Program Files\\Microsoft\\jdk-* and pick the highest version >= 11
+      b) Windows: scan standard JDK installation folders (Program Files/Java,
+         Eclipse Adoptium, Microsoft) and pick the highest version >= 11
       c) macOS: run /usr/libexec/java_home
       d) Linux: scan /usr/lib/jvm/* and pick the highest version >= 11
 
@@ -119,10 +118,11 @@ def find_java_home() -> str | None:
 
     # b) Windows scan
     if sys.platform == "win32":
+        prog_files = os.environ.get("ProgramFiles", "C:/Program Files").replace("\\", "/")
         patterns = [
-            r"C:\Program Files\Java\jdk-*",
-            r"C:\Program Files\Eclipse Adoptium\jdk-*",
-            r"C:\Program Files\Microsoft\jdk-*",
+            f"{prog_files}/Java/jdk-*",
+            f"{prog_files}/Eclipse Adoptium/jdk-*",
+            f"{prog_files}/Microsoft/jdk-*",
         ]
         candidates = []
         for pattern in patterns:
@@ -206,7 +206,7 @@ def get_spark_session(app_name: str = APP_NAME) -> SparkSession:
                 "  1. Download and install Eclipse Temurin (Java 17 or 21):\n"
                 "     https://adoptium.net/temurin/releases/\n"
                 "  2. Set the JAVA_HOME environment variable to your JDK installation path,\n"
-                "     e.g., C:\\Program Files\\Eclipse Adoptium\\jdk-17.x.x-hotspot\n"
+                "     e.g., %ProgramFiles%/Eclipse Adoptium/jdk-17.x.x-hotspot\n"
                 "  3. Ensure %JAVA_HOME%\\bin is added to your system PATH.\n"
             )
             print(err_msg, file=sys.stderr)

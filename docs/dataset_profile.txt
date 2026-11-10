@@ -1,8 +1,8 @@
 ================================================================================
   Weather and Climate Pattern Discovery – Dataset Profiling (Spark SQL)
 ================================================================================
-Dataset Path : C:\Users\SK MD Rijooan Hasan\Desktop\BDT\weather-climate-spark\data\raw\india_weather_daily.csv
-Spark Path   : C:/Users/SK MD Rijooan Hasan/Desktop/BDT/weather-climate-spark/data/raw/india_weather_daily.csv
+Dataset Path : data/raw/india_weather_daily.csv
+Spark Path   : data/raw/india_weather_daily.csv
 View Name    : weather_raw
 
 [Check 1] Header & Column Order Validation...

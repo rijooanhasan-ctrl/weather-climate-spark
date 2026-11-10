@@ -95,17 +95,9 @@ class TestSparkSQL:
     """
     Verify that a SparkSession can be created and that Spark SQL works.
 
-    The session is created fresh for each test class to avoid cross-test
-    interference, and stopped in the teardown.
+    Uses the shared session-scoped Spark fixture from tests/conftest.py
+    to prevent prematurely stopping the JVM across test modules.
     """
-
-    @pytest.fixture(scope="class")
-    def spark(self):
-        """Create a SparkSession for this test class and stop it afterwards."""
-        from src.spark_session import get_spark_session
-        session = get_spark_session(app_name="WeatherClimate_TestSuite")
-        yield session
-        session.stop()
 
     def test_spark_session_created(self, spark):
         """SparkSession object must not be None."""

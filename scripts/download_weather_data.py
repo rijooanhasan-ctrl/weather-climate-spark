@@ -30,6 +30,7 @@ from config.settings import (  # noqa: E402
     DEFAULT_CITIES,
     PRIMARY_DATASET_PATH,
 )
+from src.utils import display_path  # noqa: E402
 
 ARCHIVE_API_URL = "https://archive-api.open-meteo.com/v1/archive"
 
@@ -303,7 +304,7 @@ def main() -> None:
 
     # If output file already exists and --force not given, exit 0
     if out_path.exists() and not args.force:
-        print(f"Dataset already exists at {out_path}. Use --force to overwrite. Exiting.")
+        print(f"Dataset already exists at {display_path(out_path)}. Use --force to overwrite. Exiting.")
         sys.exit(0)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -313,7 +314,7 @@ def main() -> None:
     print("  Data Source: Open-Meteo Historical Weather API (ERA5 Reanalysis)")
     print(f"  Date Range : {args.start} to {args.end}")
     print(f"  Cities ({len(DEFAULT_CITIES)})   : {', '.join(c['name'] for c in DEFAULT_CITIES)}")
-    print(f"  Target File: {out_path}")
+    print(f"  Target File: {display_path(out_path)}")
     print("=" * 70)
 
     # Use a tempfile in the same folder for all-or-nothing atomic replacement
@@ -373,7 +374,7 @@ def main() -> None:
     print(f"  Total Rows    : {total_rows:,}")
     print(f"  Date Range    : {args.start} to {args.end}")
     print(f"  File Size     : {file_size_mb:.2f} MB")
-    print(f"  Destination   : {out_path}")
+    print(f"  Destination   : {display_path(out_path)}")
     print("=" * 70)
 
 

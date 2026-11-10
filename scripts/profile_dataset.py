@@ -19,7 +19,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from config.schema import PLAUSIBLE_RANGES, STANDARD_SCHEMA  # noqa: E402
 from config.settings import PRIMARY_DATASET_PATH, RAW_VIEW_NAME  # noqa: E402
 from src.spark_session import get_spark_session  # noqa: E402
-from src.utils import to_spark_path  # noqa: E402
+from src.utils import display_path, to_spark_path  # noqa: E402
 
 
 class ProfileOutputCollector:
@@ -57,8 +57,8 @@ def run_profiling() -> None:
         sys.exit(1)
 
     spark_path = to_spark_path(PRIMARY_DATASET_PATH)
-    p(f"Dataset Path : {PRIMARY_DATASET_PATH}")
-    p(f"Spark Path   : {spark_path}")
+    p(f"Dataset Path : {display_path(PRIMARY_DATASET_PATH)}")
+    p(f"Spark Path   : {display_path(PRIMARY_DATASET_PATH)}")
     p(f"View Name    : {RAW_VIEW_NAME}")
 
     # 2. Initialize SparkSession
@@ -231,7 +231,7 @@ def run_profiling() -> None:
     profile_txt_path = docs_dir / "dataset_profile.txt"
     profile_txt_path.write_text(collector.get_output(), encoding="utf-8")
     p("\n" + "=" * 80)
-    p(f"Profiling report successfully saved to: {profile_txt_path}")
+    p(f"Profiling report successfully saved to: {display_path(profile_txt_path)}")
     p("=" * 80)
 
 

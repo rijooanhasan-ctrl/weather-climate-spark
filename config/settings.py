@@ -54,4 +54,29 @@ DATASET_END_DATE: str = "2025-12-31"
 PRIMARY_DATASET_PATH: Path = RAW_DATA_DIR / "india_weather_daily.csv"
 RAW_VIEW_NAME: str = "weather_raw"
 
+# ── Upload and Ingestion Configuration ────────────────────────────────────────
+UPLOAD_DIR: Path = BASE_DIR / "data" / "uploads"
+MAX_UPLOAD_MB: int = 200
+ALLOWED_UPLOAD_EXTENSIONS: list[str] = [".csv"]
+STANDARDIZED_VIEW_NAME: str = "weather_standardized"
+SUPPORTED_DELIMITERS: list[str] = [",", ";", "\t", "|"]
+DATE_FORMAT_CANDIDATES: list[str] = [
+    "yyyy-MM-dd",
+    "dd-MM-yyyy",
+    "MM-dd-yyyy",
+    "yyyy/MM/dd",
+    "dd/MM/yyyy",
+    "MM/dd/yyyy",
+    "dd.MM.yyyy",
+    "yyyyMMdd",
+]
+
+# ── Validation Thresholds ─────────────────────────────────────────────────────
+MIN_ROWS: int = 30
+DATE_PARSE_ERROR_BELOW: float = 0.50
+NUMERIC_PARSE_WARN_BELOW: float = 0.95
+NULL_WARN_ABOVE: float = 0.20
+OUT_OF_RANGE_UNIT_WARN_ABOVE: float = 0.50
+
+
 
