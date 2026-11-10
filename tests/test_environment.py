@@ -143,3 +143,26 @@ class TestSparkSQL:
         assert row["total"] == 6, f"SUM expected 6, got {row['total']}"
         assert row["cnt"] == 3, f"COUNT expected 3, got {row['cnt']}"
 
+    def test_spark_sql_aggregation_to_pandas(self, spark):
+        """
+        Confirm that Spark SQL aggregation followed by .toPandas() works (T2).
+
+        This is the primary pipeline pattern used by the Streamlit dashboard
+        to transfer aggregated query results from Spark SQL into Pandas/Plotly.
+        """
+        import pandas as pd
+
+        df = spark.sql(
+            """
+            SELECT (id % 2) AS parity, COUNT(*) AS cnt, SUM(id) AS total
+            FROM range(10)
+            GROUP BY (id % 2)
+            """
+        )
+        pdf = df.toPandas()
+        assert isinstance(pdf, pd.DataFrame), "Result must be a pandas DataFrame"
+        assert len(pdf) == 2, f"Expected 2 rows, got {len(pdf)}"
+        assert "total" in pdf.columns
+        assert set(pdf["parity"]) == {0, 1}
+
+
