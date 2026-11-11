@@ -1,0 +1,1498 @@
+================================================================================
+WEATHER & CLIMATE PATTERN DISCOVERY — SPARK SQL ANALYSIS ENGINE
+================================================================================
+Dataset      : data/raw/india_weather_daily.csv
+Filter Start : None (All)
+Filter End   : None (All)
+Locations    : All
+--------------------------------------------------------------------------------
+Dataset prepared and cached in 21.31 s (46,752 raw rows -> 46,752 clean rows in view 'weather_clean')
+
+================================================================================
+[1/22] [TEMPERATURE] Yearly Temperature & Anomalies (key: temp_yearly)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    yearly_agg AS (
+        SELECT
+            location,
+            year,
+            ROUND(AVG(temperature), 2) AS avg_temp,
+            ROUND(AVG(temp_max), 2) AS avg_temp_max,
+            ROUND(AVG(temp_min), 2) AS avg_temp_min,
+            ROUND(MAX(temp_max), 2) AS record_max,
+            ROUND(MIN(temp_min), 2) AS record_min,
+            COUNT(temperature) AS days_with_data,
+            DATEDIFF(make_date(year + 1, 1, 1), make_date(year, 1, 1)) AS days_in_year,
+            CASE
+                WHEN (CAST(COUNT(temperature) AS DOUBLE) / DATEDIFF(make_date(year + 1, 1, 1), make_date(year, 1, 1))) >= 0.95
+                THEN true
+                ELSE false
+            END AS is_complete_year
+        FROM base
+        GROUP BY location, year
+    ),
+    with_baseline AS (
+        SELECT
+            location,
+            year,
+            avg_temp,
+            avg_temp_max,
+            avg_temp_min,
+            record_max,
+            record_min,
+            days_with_data,
+            is_complete_year,
+            ROUND(avg_temp - AVG(avg_temp) OVER (PARTITION BY location), 2) AS anomaly_vs_location_mean,
+            ROUND(avg_temp - LAG(avg_temp, 1) OVER (PARTITION BY location ORDER BY year), 2) AS yoy_change
+        FROM yearly_agg
+    )
+    SELECT
+        location,
+        year,
+        avg_temp,
+        avg_temp_max,
+        avg_temp_min,
+        record_max,
+        record_min,
+        days_with_data,
+        is_complete_year,
+        anomaly_vs_location_mean,
+        yoy_change
+    FROM with_baseline
+    ORDER BY location, year
+
+Preview (first 10 rows of 128):
++---------+----+--------+------------+------------+----------+----------+--------------+----------------+------------------------+----------+
+|location |year|avg_temp|avg_temp_max|avg_temp_min|record_max|record_min|days_with_data|is_complete_year|anomaly_vs_location_mean|yoy_change|
++---------+----+--------+------------+------------+----------+----------+--------------+----------------+------------------------+----------+
+|Bengaluru|2010|23.09   |28.16       |18.98       |36.9      |9.8       |365           |true            |-0.09                   |NULL      |
+|Bengaluru|2011|22.45   |27.83       |18.01       |33.9      |10.4      |365           |true            |-0.73                   |-0.64     |
+|Bengaluru|2012|22.98   |28.55       |18.23       |35.9      |9.9       |366           |true            |-0.2                    |0.53      |
+|Bengaluru|2013|22.8    |28.02       |18.46       |35.7      |11.4      |365           |true            |-0.38                   |-0.18     |
+|Bengaluru|2014|23.08   |28.39       |18.67       |36.3      |12.1      |365           |true            |-0.1                    |0.28      |
+|Bengaluru|2015|22.86   |28.01       |18.66       |35.0      |10.9      |365           |true            |-0.32                   |-0.22     |
+|Bengaluru|2016|23.43   |28.76       |18.78       |36.8      |11.5      |366           |true            |0.25                    |0.57      |
+|Bengaluru|2017|23.43   |28.62       |19.03       |35.7      |12.5      |365           |true            |0.25                    |0.0       |
+|Bengaluru|2018|23.1    |28.6        |18.68       |34.6      |12.0      |365           |true            |-0.08                   |-0.33     |
+|Bengaluru|2019|23.77   |29.22       |19.31       |35.8      |11.8      |365           |true            |0.59                    |0.67      |
++---------+----+--------+------------+------------+----------+----------+--------------+----------------+------------------------+----------+
+only showing top 10 rows
+
+Rows returned: 128 | Execution time: 0.542 s
+
+================================================================================
+[2/22] [TEMPERATURE] Monthly Temperature Climatology (key: temp_monthly_climatology)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    )
+    SELECT
+        location,
+        month,
+        ROUND(AVG(temperature), 2) AS avg_temp,
+        ROUND(AVG(temp_max), 2) AS avg_temp_max,
+        ROUND(AVG(temp_min), 2) AS avg_temp_min
+    FROM base
+    GROUP BY location, month
+    ORDER BY location, month
+
+Preview (first 10 rows of 96):
++---------+-----+--------+------------+------------+
+|location |month|avg_temp|avg_temp_max|avg_temp_min|
++---------+-----+--------+------------+------------+
+|Bengaluru|1    |20.98   |27.45       |15.5        |
+|Bengaluru|2    |22.91   |29.9        |16.44       |
+|Bengaluru|3    |25.74   |32.65       |19.03       |
+|Bengaluru|4    |27.16   |33.59       |21.19       |
+|Bengaluru|5    |25.72   |31.43       |21.22       |
+|Bengaluru|6    |23.53   |28.09       |20.34       |
+|Bengaluru|7    |22.58   |26.75       |19.87       |
+|Bengaluru|8    |22.49   |26.66       |19.6        |
+|Bengaluru|9    |22.51   |26.91       |19.25       |
+|Bengaluru|10   |22.38   |27.0        |18.79       |
++---------+-----+--------+------------+------------+
+only showing top 10 rows
+
+Rows returned: 96 | Execution time: 0.319 s
+
+================================================================================
+[3/22] [TEMPERATURE] Monthly Temperature Series (key: temp_monthly_series)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    monthly_agg AS (
+        SELECT
+            location,
+            year,
+            month,
+            ROUND(AVG(temperature), 2) AS avg_temp,
+            ROW_NUMBER() OVER (PARTITION BY location ORDER BY year, month) AS month_idx,
+            AVG(AVG(temperature)) OVER (
+                PARTITION BY location
+                ORDER BY year, month
+                ROWS BETWEEN 11 PRECEDING AND CURRENT ROW
+            ) AS rolling_12m_raw
+        FROM base
+        GROUP BY location, year, month
+    )
+    SELECT
+        location,
+        year,
+        month,
+        avg_temp,
+        CASE
+            WHEN month_idx >= 12 THEN ROUND(rolling_12m_raw, 2)
+            ELSE NULL
+        END AS rolling_12m_avg
+    FROM monthly_agg
+    ORDER BY location, year, month
+
+Preview (first 10 rows of 1,536):
++---------+----+-----+--------+---------------+
+|location |year|month|avg_temp|rolling_12m_avg|
++---------+----+-----+--------+---------------+
+|Bengaluru|2010|1    |20.95   |NULL           |
+|Bengaluru|2010|2    |23.71   |NULL           |
+|Bengaluru|2010|3    |26.6    |NULL           |
+|Bengaluru|2010|4    |27.58   |NULL           |
+|Bengaluru|2010|5    |25.9    |NULL           |
+|Bengaluru|2010|6    |23.51   |NULL           |
+|Bengaluru|2010|7    |22.03   |NULL           |
+|Bengaluru|2010|8    |22.18   |NULL           |
+|Bengaluru|2010|9    |22.16   |NULL           |
+|Bengaluru|2010|10   |22.06   |NULL           |
++---------+----+-----+--------+---------------+
+only showing top 10 rows
+
+Rows returned: 1,536 | Execution time: 0.329 s
+
+================================================================================
+[4/22] [TEMPERATURE] Location Temperature Ranking (key: temp_location_ranking)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    loc_summary AS (
+        SELECT
+            location,
+            ROUND(AVG(temperature), 2) AS avg_temp,
+            MAX(temp_max) AS max_val,
+            MIN(temp_min) AS min_val
+        FROM base
+        GROUP BY location
+    ),
+    extremes_dates AS (
+        SELECT
+            b.location,
+            FIRST(CASE WHEN b.temp_max = s.max_val THEN CAST(b.date AS STRING) END, true) AS record_max_date,
+            FIRST(CASE WHEN b.temp_min = s.min_val THEN CAST(b.date AS STRING) END, true) AS record_min_date
+        FROM base b
+        JOIN loc_summary s ON b.location = s.location
+        GROUP BY b.location
+    )
+    SELECT
+        s.location,
+        s.avg_temp,
+        ROUND(s.max_val, 2) AS record_max,
+        d.record_max_date,
+        ROUND(s.min_val, 2) AS record_min,
+        d.record_min_date,
+        RANK() OVER (ORDER BY s.avg_temp DESC, s.location ASC) AS hottest_rank,
+        RANK() OVER (ORDER BY s.avg_temp ASC, s.location ASC) AS coldest_rank
+    FROM loc_summary s
+    JOIN extremes_dates d ON s.location = d.location
+    ORDER BY hottest_rank, s.location ASC
+
+Preview (first 10 rows of 8):
++---------+--------+----------+---------------+----------+---------------+------------+------------+
+|location |avg_temp|record_max|record_max_date|record_min|record_min_date|hottest_rank|coldest_rank|
++---------+--------+----------+---------------+----------+---------------+------------+------------+
+|Chennai  |28.01   |42.0      |2020-05-19     |15.1      |2012-01-18     |1           |8           |
+|Mumbai   |26.73   |41.3      |2024-04-16     |12.9      |2019-02-10     |2           |7           |
+|Kolkata  |26.09   |43.9      |2024-04-30     |8.1       |2013-01-09     |3           |6           |
+|Hyderabad|25.93   |41.7      |2010-05-25     |9.8       |2010-12-21     |4           |5           |
+|Jaipur   |24.9    |46.6      |2024-05-27     |2.0       |2011-01-06     |5           |4           |
+|Delhi    |24.58   |46.0      |2024-05-26     |1.9       |2019-12-31     |6           |3           |
+|Bengaluru|23.18   |39.5      |2024-05-01     |9.8       |2010-12-23     |7           |2           |
+|Shillong |17.43   |30.4      |2023-04-18     |0.5       |2023-01-19     |8           |1           |
++---------+--------+----------+---------------+----------+---------------+------------+------------+
+
+Rows returned: 8 | Execution time: 0.931 s
+
+================================================================================
+[5/22] [TEMPERATURE] Temperature Trend Analysis (key: temp_trend)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    all_locations AS (
+        SELECT DISTINCT location FROM base
+    ),
+    yearly_agg AS (
+        SELECT
+            location,
+            year,
+            AVG(temperature) AS avg_temp,
+            CASE
+                WHEN (CAST(COUNT(temperature) AS DOUBLE) / DATEDIFF(make_date(year + 1, 1, 1), make_date(year, 1, 1))) >= 0.95
+                THEN true
+                ELSE false
+            END AS is_complete_year
+        FROM base
+        GROUP BY location, year
+    ),
+    complete_years AS (
+        SELECT location, year, avg_temp
+        FROM yearly_agg
+        WHERE is_complete_year = true
+    ),
+    loc_regr AS (
+        SELECT
+            location,
+            regr_slope(avg_temp, CAST(year AS DOUBLE)) AS raw_slope,
+            regr_r2(avg_temp, CAST(year AS DOUBLE)) AS raw_r2,
+            COUNT(*) AS n_years
+        FROM complete_years
+        GROUP BY location
+    ),
+    loc_endpoints AS (
+        SELECT
+            location,
+            MAX(CASE WHEN rn_asc = 1 THEN avg_temp END) AS first_year_avg,
+            MAX(CASE WHEN rn_desc = 1 THEN avg_temp END) AS last_year_avg
+        FROM (
+            SELECT
+                location,
+                avg_temp,
+                ROW_NUMBER() OVER (PARTITION BY location ORDER BY year ASC) AS rn_asc,
+                ROW_NUMBER() OVER (PARTITION BY location ORDER BY year DESC) AS rn_desc
+            FROM complete_years
+        )
+        GROUP BY location
+    ),
+    loc_distinct AS (
+        SELECT
+            r.location,
+            ROUND(r.raw_slope, 4) AS slope_c_per_year,
+            ROUND(r.raw_slope * 10, 4) AS slope_per_decade,
+            ROUND(COALESCE(r.raw_r2, 0.0), 4) AS r_squared,
+            r.n_years,
+            ROUND(e.first_year_avg, 2) AS first_year_avg,
+            ROUND(e.last_year_avg, 2) AS last_year_avg
+        FROM loc_regr r
+        JOIN loc_endpoints e ON r.location = e.location
+    ),
+    loc_distinct_all AS (
+        SELECT
+            a.location,
+            COALESCE(d.slope_c_per_year, 0.0) AS slope_c_per_year,
+            COALESCE(d.slope_per_decade, 0.0) AS slope_per_decade,
+            COALESCE(d.r_squared, 0.0) AS r_squared,
+            COALESCE(d.n_years, 0) AS n_years,
+            d.first_year_avg,
+            d.last_year_avg
+        FROM all_locations a
+        LEFT JOIN loc_distinct d ON a.location = d.location
+    ),
+    all_loc_yearly AS (
+        SELECT
+            year,
+            AVG(avg_temp) AS avg_temp
+        FROM complete_years
+        GROUP BY year
+    ),
+    all_loc_regr AS (
+        SELECT
+            'All locations' AS location,
+            regr_slope(avg_temp, CAST(year AS DOUBLE)) AS raw_slope,
+            regr_r2(avg_temp, CAST(year AS DOUBLE)) AS raw_r2,
+            COUNT(*) AS n_years
+        FROM all_loc_yearly
+    ),
+    all_loc_endpoints AS (
+        SELECT
+            'All locations' AS location,
+            MAX(CASE WHEN rn_asc = 1 THEN avg_temp END) AS first_year_avg,
+            MAX(CASE WHEN rn_desc = 1 THEN avg_temp END) AS last_year_avg
+        FROM (
+            SELECT
+                avg_temp,
+                ROW_NUMBER() OVER (ORDER BY year ASC) AS rn_asc,
+                ROW_NUMBER() OVER (ORDER BY year DESC) AS rn_desc
+            FROM all_loc_yearly
+        )
+    ),
+    all_loc_distinct AS (
+        SELECT
+            r.location,
+            ROUND(COALESCE(r.raw_slope, 0.0), 4) AS slope_c_per_year,
+            ROUND(COALESCE(r.raw_slope, 0.0) * 10, 4) AS slope_per_decade,
+            ROUND(COALESCE(r.raw_r2, 0.0), 4) AS r_squared,
+            r.n_years,
+            ROUND(e.first_year_avg, 2) AS first_year_avg,
+            ROUND(e.last_year_avg, 2) AS last_year_avg
+        FROM all_loc_regr r
+        JOIN all_loc_endpoints e ON r.location = e.location
+    ),
+    combined AS (
+        SELECT * FROM loc_distinct_all
+        UNION ALL
+        SELECT * FROM all_loc_distinct
+    )
+    SELECT
+        location,
+        slope_c_per_year,
+        slope_per_decade,
+        r_squared,
+        n_years,
+        first_year_avg,
+        last_year_avg,
+        CASE
+            WHEN n_years < 5 THEN 'insufficient data'
+            WHEN r_squared < 0.10 THEN 'no clear trend'
+            WHEN slope_c_per_year > 0 THEN 'warming'
+            ELSE 'cooling'
+        END AS trend_label
+    FROM combined
+    ORDER BY CASE WHEN location = 'All locations' THEN 1 ELSE 0 END, location ASC
+
+Preview (first 10 rows of 9):
++-------------+----------------+----------------+---------+-------+--------------+-------------+--------------+
+|location     |slope_c_per_year|slope_per_decade|r_squared|n_years|first_year_avg|last_year_avg|trend_label   |
++-------------+----------------+----------------+---------+-------+--------------+-------------+--------------+
+|Bengaluru    |0.0453          |0.4531          |0.2797   |16     |23.09         |23.33        |warming       |
+|Chennai      |0.0201          |0.2007          |0.1952   |16     |27.78         |28.46        |warming       |
+|Delhi        |0.0022          |0.0222          |6.0E-4   |16     |25.46         |25.25        |no clear trend|
+|Hyderabad    |-0.024          |-0.2399         |0.1051   |16     |26.28         |26.26        |cooling       |
+|Jaipur       |0.0233          |0.2326          |0.0567   |16     |25.46         |25.01        |no clear trend|
+|Kolkata      |0.0121          |0.1208          |0.0303   |16     |26.73         |26.68        |no clear trend|
+|Mumbai       |0.02            |0.2             |0.0888   |16     |26.97         |27.32        |no clear trend|
+|Shillong     |-0.019          |-0.1904         |0.0493   |16     |18.19         |17.83        |no clear trend|
+|All locations|0.01            |0.0999          |0.0382   |16     |25.0          |25.02        |no clear trend|
++-------------+----------------+----------------+---------+-------+--------------+-------------+--------------+
+
+Rows returned: 9 | Execution time: 1.046 s
+
+================================================================================
+[6/22] [TEMPERATURE] Seasonal Temperature Analysis (key: temp_seasonal)
+================================================================================
+
+SQL:
+WITH base AS (
+            SELECT *
+            FROM weather_clean
+            WHERE 1 = 1
+        )
+        SELECT
+            location,
+            season,
+            ROUND(AVG(temperature), 2) AS avg_temp,
+            ROUND(AVG(temp_max), 2) AS avg_temp_max,
+            ROUND(AVG(temp_min), 2) AS avg_temp_min
+        FROM base
+        GROUP BY location, season
+        ORDER BY location, season
+
+Preview (first 10 rows of 32):
++---------+------------+--------+------------+------------+
+|location |season      |avg_temp|avg_temp_max|avg_temp_min|
++---------+------------+--------+------------+------------+
+|Bengaluru|Monsoon     |22.77   |27.1        |19.76       |
+|Bengaluru|Post-monsoon|21.52   |26.53       |17.54       |
+|Bengaluru|Summer      |26.19   |32.54       |20.47       |
+|Bengaluru|Winter      |21.9    |28.62       |15.95       |
+|Chennai  |Monsoon     |29.61   |33.81       |26.66       |
+|Chennai  |Post-monsoon|26.27   |29.14       |23.82       |
+|Chennai  |Summer      |29.49   |34.06       |26.06       |
+|Chennai  |Winter      |25.13   |28.85       |21.73       |
+|Delhi    |Monsoon     |29.96   |34.21       |26.28       |
+|Delhi    |Post-monsoon|20.39   |26.83       |14.67       |
++---------+------------+--------+------------+------------+
+only showing top 10 rows
+
+Rows returned: 32 | Execution time: 0.337 s
+
+================================================================================
+[7/22] [RAINFALL] Monthly Rainfall Totals (key: rain_monthly)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    )
+    SELECT
+        location,
+        year,
+        month,
+        ROUND(COALESCE(SUM(rainfall), 0.0), 2) AS total_rain,
+        COUNT(CASE WHEN rainfall >= 2.5 THEN 1 END) AS rainy_days,
+        ROUND(COALESCE(MAX(rainfall), 0.0), 2) AS max_daily,
+        COUNT(rainfall) AS days_with_data
+    FROM base
+    GROUP BY location, year, month
+    ORDER BY location, year, month
+
+Preview (first 10 rows of 1,536):
++---------+----+-----+----------+----------+---------+--------------+
+|location |year|month|total_rain|rainy_days|max_daily|days_with_data|
++---------+----+-----+----------+----------+---------+--------------+
+|Bengaluru|2010|1    |2.6       |0         |1.1      |31            |
+|Bengaluru|2010|2    |0.0       |0         |0.0      |28            |
+|Bengaluru|2010|3    |1.3       |0         |0.9      |31            |
+|Bengaluru|2010|4    |50.6      |8         |12.5     |30            |
+|Bengaluru|2010|5    |136.4     |14        |32.7     |31            |
+|Bengaluru|2010|6    |129.4     |20        |13.4     |30            |
+|Bengaluru|2010|7    |265.7     |24        |50.8     |31            |
+|Bengaluru|2010|8    |164.4     |20        |26.9     |31            |
+|Bengaluru|2010|9    |108.2     |14        |24.7     |30            |
+|Bengaluru|2010|10   |87.5      |15        |16.3     |31            |
++---------+----+-----+----------+----------+---------+--------------+
+only showing top 10 rows
+
+Rows returned: 1,536 | Execution time: 0.287 s
+
+================================================================================
+[8/22] [RAINFALL] Yearly Rainfall & Rainy Days (key: rain_yearly)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    yearly_agg AS (
+        SELECT
+            location,
+            year,
+            ROUND(COALESCE(SUM(rainfall), 0.0), 2) AS total_rain,
+            COUNT(CASE WHEN rainfall >= 2.5 THEN 1 END) AS rainy_days,
+            ROUND(COALESCE(MAX(rainfall), 0.0), 2) AS max_daily,
+            COUNT(rainfall) AS days_with_data,
+            DATEDIFF(make_date(year + 1, 1, 1), make_date(year, 1, 1)) AS days_in_year,
+            CASE
+                WHEN (CAST(COUNT(rainfall) AS DOUBLE) / DATEDIFF(make_date(year + 1, 1, 1), make_date(year, 1, 1))) >= 0.95
+                THEN true
+                ELSE false
+            END AS is_complete_year
+        FROM base
+        GROUP BY location, year
+    )
+    SELECT
+        location,
+        year,
+        total_rain,
+        rainy_days,
+        max_daily,
+        days_with_data,
+        is_complete_year,
+        ROUND(total_rain - LAG(total_rain, 1) OVER (PARTITION BY location ORDER BY year), 2) AS yoy_change
+    FROM yearly_agg
+    ORDER BY location, year
+
+Preview (first 10 rows of 128):
++---------+----+----------+----------+---------+--------------+----------------+----------+
+|location |year|total_rain|rainy_days|max_daily|days_with_data|is_complete_year|yoy_change|
++---------+----+----------+----------+---------+--------------+----------------+----------+
+|Bengaluru|2010|1106.7    |132       |50.8     |365           |true            |NULL      |
+|Bengaluru|2011|1062.6    |116       |44.5     |365           |true            |-44.1     |
+|Bengaluru|2012|793.0     |73        |45.7     |366           |true            |-269.6    |
+|Bengaluru|2013|958.6     |105       |66.4     |365           |true            |165.6     |
+|Bengaluru|2014|822.1     |88        |29.2     |365           |true            |-136.5    |
+|Bengaluru|2015|1176.9    |105       |126.6    |365           |true            |354.8     |
+|Bengaluru|2016|775.5     |72        |37.4     |366           |true            |-401.4    |
+|Bengaluru|2017|968.3     |95        |36.1     |365           |true            |192.8     |
+|Bengaluru|2018|942.9     |104       |33.7     |365           |true            |-25.4     |
+|Bengaluru|2019|967.0     |111       |32.9     |365           |true            |24.1      |
++---------+----+----------+----------+---------+--------------+----------------+----------+
+only showing top 10 rows
+
+Rows returned: 128 | Execution time: 0.328 s
+
+================================================================================
+[9/22] [RAINFALL] Monthly Rainfall Climatology (key: rain_monthly_climatology)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    yearly_monthly AS (
+        SELECT
+            location,
+            year,
+            month,
+            SUM(rainfall) AS monthly_sum
+        FROM base
+        GROUP BY location, year, month
+    )
+    SELECT
+        location,
+        month,
+        ROUND(AVG(monthly_sum), 2) AS avg_monthly_total
+    FROM yearly_monthly
+    GROUP BY location, month
+    ORDER BY location, month
+
+Preview (first 10 rows of 96):
++---------+-----+-----------------+
+|location |month|avg_monthly_total|
++---------+-----+-----------------+
+|Bengaluru|1    |8.54             |
+|Bengaluru|2    |3.53             |
+|Bengaluru|3    |12.04            |
+|Bengaluru|4    |38.28            |
+|Bengaluru|5    |126.07           |
+|Bengaluru|6    |122.11           |
+|Bengaluru|7    |163.62           |
+|Bengaluru|8    |153.51           |
+|Bengaluru|9    |137.63           |
+|Bengaluru|10   |141.02           |
++---------+-----+-----------------+
+only showing top 10 rows
+
+Rows returned: 96 | Execution time: 0.191 s
+
+================================================================================
+[10/22] [RAINFALL] Location Rainfall Ranking (key: rain_location_ranking)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    complete_years AS (
+        SELECT
+            location,
+            year,
+            SUM(rainfall) AS annual_rain
+        FROM base
+        GROUP BY location, year
+        HAVING (CAST(COUNT(rainfall) AS DOUBLE) / DATEDIFF(make_date(year + 1, 1, 1), make_date(year, 1, 1))) >= 0.95
+    ),
+    loc_annual AS (
+        SELECT
+            location,
+            ROUND(AVG(annual_rain), 2) AS avg_annual_rain,
+            COUNT(*) AS complete_years_used
+        FROM complete_years
+        GROUP BY location
+    ),
+    monthly_climo AS (
+        SELECT
+            location,
+            month,
+            AVG(monthly_sum) AS avg_m
+        FROM (
+            SELECT location, year, month, SUM(rainfall) AS monthly_sum
+            FROM base
+            GROUP BY location, year, month
+        )
+        GROUP BY location, month
+    ),
+    wettest_m AS (
+        SELECT
+            location,
+            FIRST(month) OVER (PARTITION BY location ORDER BY avg_m DESC, month ASC) AS wettest_month
+        FROM monthly_climo
+    ),
+    wettest_m_distinct AS (
+        SELECT location, MAX(wettest_month) AS wettest_month
+        FROM wettest_m
+        GROUP BY location
+    )
+    SELECT
+        a.location,
+        a.avg_annual_rain,
+        w.wettest_month,
+        RANK() OVER (ORDER BY a.avg_annual_rain DESC, a.location ASC) AS rank,
+        a.complete_years_used
+    FROM loc_annual a
+    JOIN wettest_m_distinct w ON a.location = w.location
+    ORDER BY rank, a.location ASC
+
+Preview (first 10 rows of 8):
++---------+---------------+-------------+----+-------------------+
+|location |avg_annual_rain|wettest_month|rank|complete_years_used|
++---------+---------------+-------------+----+-------------------+
+|Shillong |2507.07        |6            |1   |16                 |
+|Mumbai   |2199.69        |7            |2   |16                 |
+|Kolkata  |1747.72        |8            |3   |16                 |
+|Chennai  |1222.47        |11           |4   |16                 |
+|Bengaluru|1023.73        |7            |5   |16                 |
+|Hyderabad|865.57         |7            |6   |16                 |
+|Delhi    |731.16         |7            |7   |16                 |
+|Jaipur   |633.89         |8            |8   |16                 |
++---------+---------------+-------------+----+-------------------+
+
+Rows returned: 8 | Execution time: 0.557 s
+
+================================================================================
+[11/22] [RAINFALL] Seasonal Rainfall Distribution (key: rain_seasonal)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    complete_years_list AS (
+        SELECT
+            location,
+            year
+        FROM base
+        GROUP BY location, year
+        HAVING (CAST(COUNT(rainfall) AS DOUBLE) / DATEDIFF(make_date(year + 1, 1, 1), make_date(year, 1, 1))) >= 0.95
+    ),
+    complete_base AS (
+        SELECT b.*
+        FROM base b
+        JOIN complete_years_list c ON b.location = c.location AND b.year = c.year
+    ),
+    seasonal_totals AS (
+        SELECT
+            location,
+            year,
+            season,
+            SUM(rainfall) AS seasonal_rain
+        FROM complete_base
+        GROUP BY location, year, season
+    ),
+    loc_seasonal_avg AS (
+        SELECT
+            location,
+            season,
+            ROUND(AVG(seasonal_rain), 2) AS avg_seasonal_total
+        FROM seasonal_totals
+        GROUP BY location, season
+    ),
+    with_shares AS (
+        SELECT
+            location,
+            season,
+            avg_seasonal_total,
+            ROUND(
+                (avg_seasonal_total / NULLIF(SUM(avg_seasonal_total) OVER (PARTITION BY location), 0.0)) * 100.0,
+                2
+            ) AS share_of_annual_pct
+        FROM loc_seasonal_avg
+    )
+    SELECT
+        location,
+        season,
+        avg_seasonal_total,
+        COALESCE(share_of_annual_pct, 0.0) AS share_of_annual_pct
+    FROM with_shares
+    ORDER BY location, season
+
+Preview (first 10 rows of 32):
++---------+------------+------------------+-------------------+
+|location |season      |avg_seasonal_total|share_of_annual_pct|
++---------+------------+------------------+-------------------+
+|Bengaluru|Monsoon     |576.86            |56.35              |
+|Bengaluru|Post-monsoon|258.41            |25.24              |
+|Bengaluru|Summer      |176.39            |17.23              |
+|Bengaluru|Winter      |12.08             |1.18               |
+|Chennai  |Monsoon     |437.6             |35.8               |
+|Chennai  |Post-monsoon|669.34            |54.75              |
+|Chennai  |Summer      |87.81             |7.18               |
+|Chennai  |Winter      |27.71             |2.27               |
+|Delhi    |Monsoon     |582.38            |79.65              |
+|Delhi    |Post-monsoon|27.36             |3.74               |
++---------+------------+------------------+-------------------+
+only showing top 10 rows
+
+Rows returned: 32 | Execution time: 0.643 s
+
+================================================================================
+[12/22] [RAINFALL] Unusual Rainfall Months (Z-Score) (key: rain_unusual_months)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    monthly_sums AS (
+        SELECT
+            location,
+            year,
+            month,
+            ROUND(SUM(rainfall), 2) AS total_rain
+        FROM base
+        GROUP BY location, year, month
+    ),
+    month_stats AS (
+        SELECT
+            location,
+            month,
+            AVG(total_rain) AS month_mean,
+            STDDEV_SAMP(total_rain) AS month_std,
+            COUNT(*) AS n_years
+        FROM monthly_sums
+        GROUP BY location, month
+    )
+    SELECT
+        m.location,
+        m.year,
+        m.month,
+        m.total_rain,
+        ROUND(s.month_mean, 2) AS month_mean,
+        ROUND(s.month_std, 2) AS month_std,
+        CASE
+            WHEN s.month_std > 0 AND s.n_years >= 8
+            THEN ROUND((m.total_rain - s.month_mean) / s.month_std, 2)
+            ELSE NULL
+        END AS z_score,
+        CASE
+            WHEN s.month_std > 0 AND s.n_years >= 8 AND ((m.total_rain - s.month_mean) / s.month_std) >= 2.0
+            THEN true
+            ELSE false
+        END AS is_unusually_high
+    FROM monthly_sums m
+    JOIN month_stats s ON m.location = s.location AND m.month = s.month
+    ORDER BY m.location, m.year, m.month
+
+Preview (first 10 rows of 1,536):
++---------+----+-----+----------+----------+---------+-------+-----------------+
+|location |year|month|total_rain|month_mean|month_std|z_score|is_unusually_high|
++---------+----+-----+----------+----------+---------+-------+-----------------+
+|Bengaluru|2010|1    |2.6       |8.54      |12.45    |-0.48  |false            |
+|Bengaluru|2010|2    |0.0       |3.53      |5.57     |-0.63  |false            |
+|Bengaluru|2010|3    |1.3       |12.04     |16.12    |-0.67  |false            |
+|Bengaluru|2010|4    |50.6      |38.28     |36.24    |0.34   |false            |
+|Bengaluru|2010|5    |136.4     |126.07    |45.33    |0.23   |false            |
+|Bengaluru|2010|6    |129.4     |122.11    |51.63    |0.14   |false            |
+|Bengaluru|2010|7    |265.7     |163.62    |69.71    |1.46   |false            |
+|Bengaluru|2010|8    |164.4     |153.51    |53.21    |0.2    |false            |
+|Bengaluru|2010|9    |108.2     |137.63    |64.29    |-0.46  |false            |
+|Bengaluru|2010|10   |87.5      |141.02    |73.9     |-0.72  |false            |
++---------+----+-----+----------+----------+---------+-------+-----------------+
+only showing top 10 rows
+
+Rows returned: 1,536 | Execution time: 0.515 s
+
+================================================================================
+[13/22] [RAINFALL] Heavy Rainfall Frequency & Records (key: rain_heavy_days)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    )
+    SELECT
+        location,
+        year,
+        COUNT(CASE WHEN rainfall >= 64.5 AND rainfall < 115.6 THEN 1 END) AS heavy_rain_days,
+        COUNT(CASE WHEN rainfall >= 115.6 AND rainfall < 204.5 THEN 1 END) AS very_heavy_rain_days,
+        COUNT(CASE WHEN rainfall >= 204.5 THEN 1 END) AS extremely_heavy_rain_days,
+        COUNT(CASE WHEN rainfall >= 64.5 THEN 1 END) AS total_heavy_days
+    FROM base
+    GROUP BY location, year
+    ORDER BY location, year
+
+Preview (first 10 rows of 128):
++---------+----+---------------+--------------------+-------------------------+----------------+
+|location |year|heavy_rain_days|very_heavy_rain_days|extremely_heavy_rain_days|total_heavy_days|
++---------+----+---------------+--------------------+-------------------------+----------------+
+|Bengaluru|2010|0              |0                   |0                        |0               |
+|Bengaluru|2011|0              |0                   |0                        |0               |
+|Bengaluru|2012|0              |0                   |0                        |0               |
+|Bengaluru|2013|1              |0                   |0                        |1               |
+|Bengaluru|2014|0              |0                   |0                        |0               |
+|Bengaluru|2015|0              |1                   |0                        |1               |
+|Bengaluru|2016|0              |0                   |0                        |0               |
+|Bengaluru|2017|0              |0                   |0                        |0               |
+|Bengaluru|2018|0              |0                   |0                        |0               |
+|Bengaluru|2019|0              |0                   |0                        |0               |
++---------+----+---------------+--------------------+-------------------------+----------------+
+only showing top 10 rows
+
+Rows returned: 128 | Execution time: 0.237 s
+
+================================================================================
+[14/22] [CLIMATE] Annual Climate Profile (key: climate_year_profile)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    )
+    SELECT
+        year,
+        ROUND(AVG(temperature), 2) AS avg_temp,
+        ROUND(SUM(rainfall) / NULLIF(COUNT(DISTINCT location), 0), 2) AS avg_rain_per_location,
+        ROUND(AVG(humidity), 2) AS avg_humidity,
+        ROUND(AVG(wind_speed), 2) AS avg_wind_speed,
+        ROUND(AVG(pressure), 2) AS avg_pressure,
+        COUNT(DISTINCT date) AS days
+    FROM base
+    GROUP BY year
+    ORDER BY year
+
+Preview (first 10 rows of 16):
++----+--------+---------------------+------------+--------------+------------+----+
+|year|avg_temp|avg_rain_per_location|avg_humidity|avg_wind_speed|avg_pressure|days|
++----+--------+---------------------+------------+--------------+------------+----+
+|2010|25.0    |1536.11              |70.12       |9.67          |1008.62     |365 |
+|2011|24.35   |1325.9               |68.88       |9.64          |1008.67     |365 |
+|2012|24.48   |1181.5               |66.52       |10.11         |1008.65     |366 |
+|2013|24.24   |1334.49              |69.48       |9.99          |1009.05     |365 |
+|2014|24.58   |1226.41              |67.52       |9.85          |1009.77     |365 |
+|2015|24.67   |1440.94              |69.22       |9.61          |1010.17     |365 |
+|2016|24.9    |1493.31              |68.79       |9.74          |1009.49     |366 |
+|2017|24.68   |1493.74              |68.43       |10.48         |1009.18     |365 |
+|2018|24.47   |1051.0               |68.26       |10.57         |1009.19     |365 |
+|2019|24.52   |1348.25              |70.49       |10.63         |1009.75     |365 |
++----+--------+---------------------+------------+--------------+------------+----+
+only showing top 10 rows
+
+Rows returned: 16 | Execution time: 0.298 s
+
+================================================================================
+[15/22] [CLIMATE] Climate Comparison Between Years (key: climate_year_comparison)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    year_stats AS (
+        SELECT
+            year,
+            COUNT(DISTINCT location) AS n_locs,
+            AVG(temperature) AS avg_temp,
+            AVG(temp_max) AS avg_temp_max,
+            AVG(temp_min) AS avg_temp_min,
+            SUM(rainfall) AS total_rain,
+            COUNT(CASE WHEN rainfall >= 2.5 THEN 1 END) AS rainy_days,
+            AVG(humidity) AS avg_humidity,
+            AVG(wind_speed) AS avg_wind_speed,
+            AVG(pressure) AS avg_pressure
+        FROM base
+        WHERE year IN (2015, 2020)
+        GROUP BY year
+    ),
+    metrics_unpivoted AS (
+        SELECT
+            'Average Temperature (°C)' AS metric,
+            1 AS sort_order,
+            MAX(CASE WHEN year = 2015 THEN avg_temp END) AS val_a,
+            MAX(CASE WHEN year = 2020 THEN avg_temp END) AS val_b
+        FROM year_stats
+        UNION ALL
+        SELECT
+            'Average Maximum Temperature (°C)' AS metric,
+            2 AS sort_order,
+            MAX(CASE WHEN year = 2015 THEN avg_temp_max END) AS val_a,
+            MAX(CASE WHEN year = 2020 THEN avg_temp_max END) AS val_b
+        FROM year_stats
+        UNION ALL
+        SELECT
+            'Average Minimum Temperature (°C)' AS metric,
+            3 AS sort_order,
+            MAX(CASE WHEN year = 2015 THEN avg_temp_min END) AS val_a,
+            MAX(CASE WHEN year = 2020 THEN avg_temp_min END) AS val_b
+        FROM year_stats
+        UNION ALL
+        SELECT
+            'Total Rainfall per Location (mm)' AS metric,
+            4 AS sort_order,
+            MAX(CASE WHEN year = 2015 THEN total_rain / NULLIF(n_locs, 0) END) AS val_a,
+            MAX(CASE WHEN year = 2020 THEN total_rain / NULLIF(n_locs, 0) END) AS val_b
+        FROM year_stats
+        UNION ALL
+        SELECT
+            'Rainy Days per Location (days)' AS metric,
+            5 AS sort_order,
+            MAX(CASE WHEN year = 2015 THEN CAST(rainy_days AS DOUBLE) / NULLIF(n_locs, 0) END) AS val_a,
+            MAX(CASE WHEN year = 2020 THEN CAST(rainy_days AS DOUBLE) / NULLIF(n_locs, 0) END) AS val_b
+        FROM year_stats
+        UNION ALL
+        SELECT
+            'Average Relative Humidity (%)' AS metric,
+            6 AS sort_order,
+            MAX(CASE WHEN year = 2015 THEN avg_humidity END) AS val_a,
+            MAX(CASE WHEN year = 2020 THEN avg_humidity END) AS val_b
+        FROM year_stats
+        UNION ALL
+        SELECT
+            'Average Wind Speed (km/h)' AS metric,
+            7 AS sort_order,
+            MAX(CASE WHEN year = 2015 THEN avg_wind_speed END) AS val_a,
+            MAX(CASE WHEN year = 2020 THEN avg_wind_speed END) AS val_b
+        FROM year_stats
+        UNION ALL
+        SELECT
+            'Average Surface Pressure (hPa)' AS metric,
+            8 AS sort_order,
+            MAX(CASE WHEN year = 2015 THEN avg_pressure END) AS val_a,
+            MAX(CASE WHEN year = 2020 THEN avg_pressure END) AS val_b
+        FROM year_stats
+    )
+    SELECT
+        metric,
+        ROUND(val_a, 2) AS value_a,
+        ROUND(val_b, 2) AS value_b,
+        ROUND(val_b - val_a, 2) AS difference,
+        CASE
+            WHEN val_a IS NOT NULL AND val_a != 0.0
+            THEN ROUND(((val_b - val_a) / val_a) * 100.0, 2)
+            ELSE NULL
+        END AS pct_change
+    FROM metrics_unpivoted
+    ORDER BY sort_order
+
+Preview (first 10 rows of 8):
++--------------------------------+-------+-------+----------+----------+
+|metric                          |value_a|value_b|difference|pct_change|
++--------------------------------+-------+-------+----------+----------+
+|Average Temperature (°C)        |24.67  |24.35  |-0.32     |-1.31     |
+|Average Maximum Temperature (°C)|29.43  |29.08  |-0.35     |-1.18     |
+|Average Minimum Temperature (°C)|20.52  |20.37  |-0.16     |-0.77     |
+|Total Rainfall per Location (mm)|1440.94|1501.51|60.58     |4.2       |
+|Rainy Days per Location (days)  |96.88  |106.13 |9.25      |9.55      |
+|Average Relative Humidity (%)   |69.22  |70.89  |1.67      |2.41      |
+|Average Wind Speed (km/h)       |9.61   |10.27  |0.66      |6.85      |
+|Average Surface Pressure (hPa)  |1010.17|1009.5 |-0.68     |-0.07     |
++--------------------------------+-------+-------+----------+----------+
+
+Rows returned: 8 | Execution time: 0.927 s
+
+================================================================================
+[16/22] [CLIMATE] Multi-City Climate Comparison (key: climate_city_profile)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    loc_stats AS (
+        SELECT
+            location,
+            ROUND(AVG(temperature), 2) AS avg_temp,
+            ROUND(AVG(rainfall) * 365.25, 2) AS annual_rainfall_equiv,
+            ROUND(AVG(humidity), 2) AS avg_humidity,
+            ROUND(AVG(wind_speed), 2) AS avg_wind_speed,
+            ROUND(AVG(pressure), 2) AS avg_pressure,
+            ROUND(AVG(CASE WHEN rainfall >= 2.5 THEN 1.0 ELSE 0.0 END) * 365.25, 1) AS rainy_days_per_year,
+            ROUND(MAX(temp_max), 2) AS record_max_temp,
+            ROUND(MIN(temp_min), 2) AS record_min_temp,
+            ROUND(MAX(rainfall), 2) AS record_rain
+        FROM base
+        GROUP BY location
+    )
+    SELECT
+        location,
+        avg_temp,
+        annual_rainfall_equiv,
+        avg_humidity,
+        avg_wind_speed,
+        avg_pressure,
+        rainy_days_per_year,
+        record_max_temp,
+        record_min_temp,
+        record_rain,
+        RANK() OVER (ORDER BY avg_temp DESC, location ASC) AS temp_rank,
+        RANK() OVER (ORDER BY annual_rainfall_equiv DESC, location ASC) AS rain_rank,
+        RANK() OVER (ORDER BY avg_humidity DESC, location ASC) AS humidity_rank,
+        RANK() OVER (ORDER BY avg_wind_speed DESC, location ASC) AS wind_rank,
+        RANK() OVER (ORDER BY avg_pressure DESC, location ASC) AS pressure_rank
+    FROM loc_stats
+    ORDER BY location ASC
+
+Preview (first 10 rows of 8):
++---------+--------+---------------------+------------+--------------+------------+-------------------+---------------+---------------+-----------+---------+---------+-------------+---------+-------------+
+|location |avg_temp|annual_rainfall_equiv|avg_humidity|avg_wind_speed|avg_pressure|rainy_days_per_year|record_max_temp|record_min_temp|record_rain|temp_rank|rain_rank|humidity_rank|wind_rank|pressure_rank|
++---------+--------+---------------------+------------+--------------+------------+-------------------+---------------+---------------+-----------+---------+---------+-------------+---------+-------------+
+|Bengaluru|23.18   |1023.73              |69.49       |11.71         |1011.34     |103.1              |39.5           |9.8            |126.6      |7        |5        |5            |2        |2            |
+|Chennai  |28.01   |1222.47              |74.11       |12.57         |1008.65     |92.8               |42.0           |15.1           |255.8      |1        |4        |3            |1        |5            |
+|Delhi    |24.58   |731.16               |61.84       |9.15          |1008.17     |61.9               |46.0           |1.9            |122.7      |6        |7        |7            |7        |7            |
+|Hyderabad|25.93   |865.57               |61.99       |10.7          |1009.53     |74.9               |41.7           |9.8            |82.7       |4        |6        |6            |4        |3            |
+|Jaipur   |24.9    |633.89               |53.25       |9.3           |1008.57     |53.8               |46.6           |2.0            |116.4      |5        |8        |8            |5        |6            |
+|Kolkata  |26.09   |1747.72              |76.62       |9.16          |1007.72     |127.0              |43.9           |8.1            |155.4      |3        |3        |2            |6        |8            |
+|Mumbai   |26.73   |2199.69              |73.98       |11.43         |1008.94     |114.5              |41.3           |12.9           |251.1      |2        |2        |4            |3        |4            |
+|Shillong |17.43   |2507.07              |80.22       |6.16          |1011.77     |167.4              |30.4           |0.5            |210.4      |8        |1        |1            |8        |1            |
++---------+--------+---------------------+------------+--------------+------------+-------------------+---------------+---------------+-----------+---------+---------+-------------+---------+-------------+
+
+Rows returned: 8 | Execution time: 0.326 s
+
+================================================================================
+[17/22] [CLIMATE] Extreme Weather Thresholds (key: extreme_thresholds)
+================================================================================
+
+SQL:
+SELECT
+        location,
+        ROUND(percentile_approx(temp_max, 0.95, 10000), 2) AS hot_day_threshold,
+        ROUND(percentile_approx(temp_min, 0.05, 10000), 2) AS cold_day_threshold,
+        ROUND(percentile_approx(CASE WHEN rainfall >= 2.5 THEN rainfall END, 0.95, 10000), 2) AS wet_day_extreme_threshold
+    FROM weather_clean
+    GROUP BY location
+    ORDER BY location
+
+Preview (first 10 rows of 8):
++---------+-----------------+------------------+-------------------------+
+|location |hot_day_threshold|cold_day_threshold|wet_day_extreme_threshold|
++---------+-----------------+------------------+-------------------------+
+|Bengaluru|34.3             |14.1              |22.7                     |
+|Chennai  |37.3             |20.5              |34.3                     |
+|Delhi    |41.2             |7.0               |29.0                     |
+|Hyderabad|38.5             |15.1              |30.0                     |
+|Jaipur   |41.4             |7.3               |30.4                     |
+|Kolkata  |37.3             |12.4              |34.8                     |
+|Mumbai   |34.4             |17.9              |60.0                     |
+|Shillong |25.7             |5.8               |48.7                     |
++---------+-----------------+------------------+-------------------------+
+
+Rows returned: 8 | Execution time: 0.192 s
+
+================================================================================
+[18/22] [CLIMATE] Yearly Extreme Event Counts (key: extreme_events_yearly)
+================================================================================
+
+SQL:
+WITH full_thresholds AS (
+        SELECT
+            location,
+            percentile_approx(temp_max, 0.95, 10000) AS hot_thresh,
+            percentile_approx(temp_min, 0.05, 10000) AS cold_thresh,
+            percentile_approx(CASE WHEN rainfall >= 2.5 THEN rainfall END, 0.95, 10000) AS wet_thresh
+        FROM weather_clean
+        GROUP BY location
+    ),
+    base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    )
+    SELECT
+        b.location,
+        b.year,
+        COUNT(CASE WHEN b.temp_max >= t.hot_thresh THEN 1 END) AS hot_days,
+        COUNT(CASE WHEN b.temp_min <= t.cold_thresh THEN 1 END) AS cold_days,
+        COUNT(CASE WHEN b.rainfall >= t.wet_thresh AND b.rainfall >= 2.5 THEN 1 END) AS extreme_rain_days,
+        COUNT(CASE WHEN b.rainfall >= 64.5 THEN 1 END) AS heavy_rain_days
+    FROM base b
+    JOIN full_thresholds t ON b.location = t.location
+    GROUP BY b.location, b.year
+    ORDER BY b.location, b.year
+
+Preview (first 10 rows of 128):
++---------+----+--------+---------+-----------------+---------------+
+|location |year|hot_days|cold_days|extreme_rain_days|heavy_rain_days|
++---------+----+--------+---------+-----------------+---------------+
+|Bengaluru|2010|23      |19       |6                |0              |
+|Bengaluru|2011|0       |54       |5                |0              |
+|Bengaluru|2012|21      |37       |5                |0              |
+|Bengaluru|2013|19      |36       |4                |1              |
+|Bengaluru|2014|26      |17       |2                |0              |
+|Bengaluru|2015|3       |16       |8                |1              |
+|Bengaluru|2016|26      |30       |6                |0              |
+|Bengaluru|2017|22      |11       |7                |0              |
+|Bengaluru|2018|1       |13       |4                |0              |
+|Bengaluru|2019|27      |15       |6                |0              |
++---------+----+--------+---------+-----------------+---------------+
+only showing top 10 rows
+
+Rows returned: 128 | Execution time: 0.645 s
+
+================================================================================
+[19/22] [CLIMATE] Top Extreme Weather Events (key: extreme_top_events)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    hottest AS (
+        SELECT
+            'Hottest Day' AS category,
+            location,
+            CAST(date AS STRING) AS date,
+            temp_max AS value,
+            ROW_NUMBER() OVER (ORDER BY temp_max DESC, date ASC) AS rank
+        FROM base
+        WHERE temp_max IS NOT NULL
+    ),
+    coldest AS (
+        SELECT
+            'Coldest Day' AS category,
+            location,
+            CAST(date AS STRING) AS date,
+            temp_min AS value,
+            ROW_NUMBER() OVER (ORDER BY temp_min ASC, date ASC) AS rank
+        FROM base
+        WHERE temp_min IS NOT NULL
+    ),
+    wettest AS (
+        SELECT
+            'Wettest Day' AS category,
+            location,
+            CAST(date AS STRING) AS date,
+            rainfall AS value,
+            ROW_NUMBER() OVER (ORDER BY rainfall DESC, date ASC) AS rank
+        FROM base
+        WHERE rainfall IS NOT NULL
+    ),
+    unioned AS (
+        SELECT category, rank, location, date, ROUND(value, 2) AS value FROM hottest WHERE rank <= 10
+        UNION ALL
+        SELECT category, rank, location, date, ROUND(value, 2) AS value FROM coldest WHERE rank <= 10
+        UNION ALL
+        SELECT category, rank, location, date, ROUND(value, 2) AS value FROM wettest WHERE rank <= 10
+    )
+    SELECT category, rank, location, date, value
+    FROM unioned
+    ORDER BY category, rank
+
+Preview (first 10 rows of 30):
++-----------+----+--------+----------+-----+
+|category   |rank|location|date      |value|
++-----------+----+--------+----------+-----+
+|Coldest Day|1   |Shillong|2023-01-19|0.5  |
+|Coldest Day|2   |Shillong|2022-02-12|1.0  |
+|Coldest Day|3   |Shillong|2019-01-30|1.3  |
+|Coldest Day|4   |Shillong|2018-01-28|1.4  |
+|Coldest Day|5   |Shillong|2022-01-29|1.4  |
+|Coldest Day|6   |Shillong|2011-01-19|1.7  |
+|Coldest Day|7   |Shillong|2018-01-08|1.9  |
+|Coldest Day|8   |Delhi   |2019-12-31|1.9  |
+|Coldest Day|9   |Jaipur  |2011-01-06|2.0  |
+|Coldest Day|10  |Jaipur  |2019-12-31|2.3  |
++-----------+----+--------+----------+-----+
+only showing top 10 rows
+
+Rows returned: 30 | Execution time: 0.599 s
+
+================================================================================
+[20/22] [CLIMATE] Heatwave Spells (Gaps-and-Islands) (key: heatwave_spells)
+================================================================================
+
+SQL:
+WITH full_thresholds AS (
+        SELECT
+            location,
+            percentile_approx(temp_max, 0.95, 10000) AS hot_thresh
+        FROM weather_clean
+        GROUP BY location
+    ),
+    filtered_base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    flagged_days AS (
+        SELECT
+            b.location,
+            b.date,
+            b.temp_max,
+            DATE_SUB(b.date, CAST(ROW_NUMBER() OVER (PARTITION BY b.location ORDER BY b.date) AS INT)) AS spell_grp
+        FROM filtered_base b
+        JOIN full_thresholds t ON b.location = t.location
+        WHERE b.temp_max >= t.hot_thresh
+    ),
+    spells AS (
+        SELECT
+            location,
+            MIN(date) AS spell_start,
+            MAX(date) AS spell_end,
+            COUNT(*) AS length_days,
+            ROUND(MAX(temp_max), 2) AS peak_temp_max
+        FROM flagged_days
+        GROUP BY location, spell_grp
+        HAVING COUNT(*) >= 3
+    )
+    SELECT
+        location,
+        CAST(spell_start AS STRING) AS spell_start,
+        CAST(spell_end AS STRING) AS spell_end,
+        length_days,
+        peak_temp_max
+    FROM spells
+    ORDER BY length_days DESC, peak_temp_max DESC, location ASC
+
+Preview (first 10 rows of 281):
++---------+-----------+----------+-----------+-------------+
+|location |spell_start|spell_end |length_days|peak_temp_max|
++---------+-----------+----------+-----------+-------------+
+|Bengaluru|2024-03-23 |2024-05-07|46         |39.5         |
+|Chennai  |2012-05-15 |2012-06-13|30         |40.6         |
+|Hyderabad|2016-04-10 |2016-05-04|25         |41.5         |
+|Jaipur   |2024-05-15 |2024-06-07|24         |46.6         |
+|Jaipur   |2010-05-11 |2010-06-01|22         |45.6         |
+|Kolkata  |2024-04-15 |2024-05-04|20         |43.9         |
+|Delhi    |2010-05-11 |2010-05-27|17         |45.6         |
+|Hyderabad|2012-05-15 |2012-05-31|17         |41.1         |
+|Kolkata  |2014-04-15 |2014-05-01|17         |40.4         |
+|Jaipur   |2019-05-28 |2019-06-12|16         |45.2         |
++---------+-----------+----------+-----------+-------------+
+only showing top 10 rows
+
+Rows returned: 281 | Execution time: 0.731 s
+
+================================================================================
+[21/22] [CLIMATE] Climate Variable Correlations (key: correlations)
+================================================================================
+
+SQL:
+WITH 
+        base AS (
+            SELECT location, `temperature`, `rainfall`, `humidity`, `wind_speed`, `pressure`
+            FROM weather_clean
+            WHERE 1 = 1
+        )
+        
+    
+            SELECT
+                'All' AS location,
+                'temperature' AS var_x,
+                'rainfall' AS var_y,
+                CORR(`temperature`, `rainfall`) AS r,
+                COUNT(CASE WHEN `temperature` IS NOT NULL AND `rainfall` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+             UNION ALL 
+            SELECT
+                'All' AS location,
+                'temperature' AS var_x,
+                'humidity' AS var_y,
+                CORR(`temperature`, `humidity`) AS r,
+                COUNT(CASE WHEN `temperature` IS NOT NULL AND `humidity` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+             UNION ALL 
+            SELECT
+                'All' AS location,
+                'temperature' AS var_x,
+                'wind_speed' AS var_y,
+                CORR(`temperature`, `wind_speed`) AS r,
+                COUNT(CASE WHEN `temperature` IS NOT NULL AND `wind_speed` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+             UNION ALL 
+            SELECT
+                'All' AS location,
+                'temperature' AS var_x,
+                'pressure' AS var_y,
+                CORR(`temperature`, `pressure`) AS r,
+                COUNT(CASE WHEN `temperature` IS NOT NULL AND `pressure` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+             UNION ALL 
+            SELECT
+                'All' AS location,
+                'rainfall' AS var_x,
+                'humidity' AS var_y,
+                CORR(`rainfall`, `humidity`) AS r,
+                COUNT(CASE WHEN `rainfall` IS NOT NULL AND `humidity` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+             UNION ALL 
+            SELECT
+                'All' AS location,
+                'rainfall' AS var_x,
+                'wind_speed' AS var_y,
+                CORR(`rainfall`, `wind_speed`) AS r,
+                COUNT(CASE WHEN `rainfall` IS NOT NULL AND `wind_speed` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+             UNION ALL 
+            SELECT
+                'All' AS location,
+                'rainfall' AS var_x,
+                'pressure' AS var_y,
+                CORR(`rainfall`, `pressure`) AS r,
+                COUNT(CASE WHEN `rainfall` IS NOT NULL AND `pressure` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+             UNION ALL 
+            SELECT
+                'All' AS location,
+                'humidity' AS var_x,
+                'wind_speed' AS var_y,
+                CORR(`humidity`, `wind_speed`) AS r,
+                COUNT(CASE WHEN `humidity` IS NOT NULL AND `wind_speed` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+             UNION ALL 
+            SELECT
+                'All' AS location,
+                'humidity' AS var_x,
+                'pressure' AS var_y,
+                CORR(`humidity`, `pressure`) AS r,
+                COUNT(CASE WHEN `humidity` IS NOT NULL AND `pressure` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+             UNION ALL 
+            SELECT
+                'All' AS location,
+                'wind_speed' AS var_x,
+                'pressure' AS var_y,
+                CORR(`wind_speed`, `pressure`) AS r,
+                COUNT(CASE WHEN `wind_speed` IS NOT NULL AND `pressure` IS NOT NULL THEN 1 END) AS n_pairs
+            FROM base
+            
+    ORDER BY location, var_x, var_y
+
+Preview (first 10 rows of 10):
++--------+-----------+----------+---------------------+-------+
+|location|var_x      |var_y     |r                    |n_pairs|
++--------+-----------+----------+---------------------+-------+
+|All     |humidity   |pressure  |-0.1025802614248748  |46752  |
+|All     |humidity   |wind_speed|0.015796408723399453 |46752  |
+|All     |rainfall   |humidity  |0.3938784282233996   |46752  |
+|All     |rainfall   |pressure  |-0.2682593503454735  |46752  |
+|All     |rainfall   |wind_speed|0.16073762334129307  |46752  |
+|All     |temperature|humidity  |-0.24373109284363623 |46752  |
+|All     |temperature|pressure  |-0.7083391997174235  |46752  |
+|All     |temperature|rainfall  |-0.004853390319293856|46752  |
+|All     |temperature|wind_speed|0.3263675642419242   |46752  |
+|All     |wind_speed |pressure  |-0.34084904910636515 |46752  |
++--------+-----------+----------+---------------------+-------+
+
+Rows returned: 10 | Execution time: 1.194 s
+
+================================================================================
+[22/22] [KPIS] Executive Climate KPIs (key: kpi_summary)
+================================================================================
+
+SQL:
+WITH base AS (
+        SELECT *
+        FROM weather_clean
+        WHERE 1 = 1
+    ),
+    headline_aggs AS (
+        SELECT
+            COUNT(*) AS total_records,
+            COUNT(DISTINCT location) AS locations,
+            CAST(MIN(date) AS STRING) AS first_date,
+            CAST(MAX(date) AS STRING) AS last_date,
+            MIN(date) AS raw_first_date,
+            MAX(date) AS raw_last_date,
+            ROUND(AVG(temperature), 2) AS avg_temp,
+            MAX(temp_max) AS max_temp_raw,
+            MIN(temp_min) AS min_temp_raw,
+            ROUND(COALESCE(SUM(rainfall), 0.0), 2) AS total_rainfall_mm,
+            ROUND(AVG(humidity), 2) AS avg_humidity,
+            ROUND(AVG(wind_speed), 2) AS avg_wind_speed,
+            ROUND(AVG(pressure), 2) AS avg_pressure,
+            COALESCE(SUM(CASE WHEN `temperature_was_filled` THEN 1 ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN `temp_max_was_filled` THEN 1 ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN `temp_min_was_filled` THEN 1 ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN `humidity_was_filled` THEN 1 ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN `wind_speed_was_filled` THEN 1 ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN `pressure_was_filled` THEN 1 ELSE 0 END), 0) AS interpolated_value_count
+        FROM base
+    ),
+    hottest_day AS (
+        SELECT
+            CAST(date AS STRING) AS max_temp_date,
+            location AS max_temp_location
+        FROM base
+        WHERE temp_max = (SELECT max_temp_raw FROM headline_aggs)
+        ORDER BY date ASC, location ASC
+        LIMIT 1
+    ),
+    coldest_day AS (
+        SELECT
+            CAST(date AS STRING) AS min_temp_date,
+            location AS min_temp_location
+        FROM base
+        WHERE temp_min = (SELECT min_temp_raw FROM headline_aggs)
+        ORDER BY date ASC, location ASC
+        LIMIT 1
+    ),
+    yearly_totals AS (
+        SELECT
+            year,
+            AVG(temperature) AS y_temp,
+            SUM(rainfall) AS y_rain
+        FROM base
+        GROUP BY year
+    ),
+    hottest_y AS (
+        SELECT year AS hottest_year
+        FROM yearly_totals
+        ORDER BY y_temp DESC, year ASC
+        LIMIT 1
+    ),
+    wettest_y AS (
+        SELECT year AS wettest_year
+        FROM yearly_totals
+        ORDER BY y_rain DESC, year ASC
+        LIMIT 1
+    )
+    SELECT
+        h.total_records,
+        h.locations,
+        h.first_date,
+        h.last_date,
+        h.avg_temp,
+        ROUND(h.max_temp_raw, 2) AS max_temp,
+        t_hot.max_temp_date,
+        t_hot.max_temp_location,
+        ROUND(h.min_temp_raw, 2) AS min_temp,
+        t_cold.min_temp_date,
+        t_cold.min_temp_location,
+        h.total_rainfall_mm,
+        ROUND(
+            h.total_rainfall_mm / (
+                NULLIF(h.locations, 0) * (
+                    GREATEST(DATEDIFF(h.raw_last_date, h.raw_first_date) + 1, 1) / 365.25
+                )
+            ),
+            2
+        ) AS avg_annual_rainfall_per_location,
+        h.avg_humidity,
+        h.avg_wind_speed,
+        h.avg_pressure,
+        wy.wettest_year,
+        hy.hottest_year,
+        h.interpolated_value_count
+    FROM headline_aggs h
+    CROSS JOIN hottest_day t_hot
+    CROSS JOIN coldest_day t_cold
+    CROSS JOIN hottest_y hy
+    CROSS JOIN wettest_y wy
+
+Preview (first 10 rows of 1):
++-------------+---------+----------+----------+--------+--------+-------------+-----------------+--------+-------------+-----------------+-----------------+--------------------------------+------------+--------------+------------+------------+------------+------------------------+
+|total_records|locations|first_date|last_date |avg_temp|max_temp|max_temp_date|max_temp_location|min_temp|min_temp_date|min_temp_location|total_rainfall_mm|avg_annual_rainfall_per_location|avg_humidity|avg_wind_speed|avg_pressure|wettest_year|hottest_year|interpolated_value_count|
++-------------+---------+----------+----------+--------+--------+-------------+-----------------+--------+-------------+-----------------+-----------------+--------------------------------+------------+--------------+------------+------------+------------+------------------------+
+|46752        |8        |2010-01-01|2025-12-31|24.6    |46.6    |2024-05-27   |Jaipur           |0.5     |2023-01-19   |Shillong         |174900.5         |1366.41                         |68.94       |10.02         |1009.34     |2010        |2025        |0                       |
++-------------+---------+----------+----------+--------+--------+-------------+-----------------+--------+-------------+-----------------+-----------------+--------------------------------+------------+--------------+------------+------------+------------+------------------------+
+
+Rows returned: 1 | Execution time: 1.043 s
+
+================================================================================
+ALL QUERIES COMPLETED: 22 analysis executed in 27.35 s
+================================================================================

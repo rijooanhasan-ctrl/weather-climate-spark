@@ -48,9 +48,9 @@ _temp_write_*/
 .DS_Store
 Thumbs.db
 desktop.ini
-Hasan/
-Rijooan/
-(/
+
+# ── Evidence artifacts (Phase 5) ─────────────────────────
+evidence/
 
 # ── IDE / editor ─────────────────────────────────────────
 .idea/

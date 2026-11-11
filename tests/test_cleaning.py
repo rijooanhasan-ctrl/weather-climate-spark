@@ -240,6 +240,59 @@ def test_clean_gap_filling_never_crosses_locations(spark, tmp_path, raw_dataset_
     assert mumbai_day1["temperature_was_filled"] is False
 
 
+def test_clean_gap_calendar_days_absent_rows(spark, tmp_path, raw_dataset_slices):
+    """
+    Test 6b: Calendar-day gap filling rule with absent rows in the dataset:
+    (1) A NULL row whose neighbours are 6 calendar days apart due to absent rows must NOT be filled.
+    (2) A NULL row whose neighbours are 3 calendar days apart with 1 absent row must be filled correctly.
+    """
+    header = list(raw_dataset_slices["header"])
+    b_rows = [list(r) for r in raw_dataset_slices["bengaluru_rows"]]
+    temp_idx = header.index("temperature")
+
+    # (1) Test 6 calendar days apart: Jan 1, Jan 2 (NULL), Jan 7
+    # b_rows[0] is 2010-01-01, b_rows[1] is 2010-01-02, b_rows[6] is 2010-01-07
+    row_jan1 = list(b_rows[0])
+    row_jan2 = list(b_rows[1])
+    row_jan2[temp_idx] = ""  # NULL
+    row_jan7 = list(b_rows[6])
+
+    path_6days = tmp_path / "gap_6_calendar_days.csv"
+    with open(path_6days, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows([row_jan1, row_jan2, row_jan7])
+
+    load_res1 = load_dataset(spark, path_6days)
+    df_clean1, rep1 = clean(spark, std_view=load_res1.standardized_view, view_name="clean_gap_6d")
+
+    res_6d = spark.sql("SELECT date, temperature, temperature_was_filled FROM clean_gap_6d ORDER BY date").collect()
+    assert res_6d[1]["date"].strftime("%Y-%m-%d") == "2010-01-02"
+    assert res_6d[1]["temperature"] is None, "Gap of 5 calendar days (> 3) must NOT be filled"
+    assert res_6d[1]["temperature_was_filled"] is False
+
+    # (2) Test 3 calendar days apart with one absent row: Jan 1, Jan 2 (NULL), Jan 4
+    # b_rows[0] is 2010-01-01, b_rows[1] is 2010-01-02, b_rows[3] is 2010-01-04 (Jan 3 absent)
+    t0 = float(b_rows[0][temp_idx])
+    t3 = float(b_rows[3][temp_idx])
+    row_jan4 = list(b_rows[3])
+
+    path_3days = tmp_path / "gap_3_calendar_days.csv"
+    with open(path_3days, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows([row_jan1, row_jan2, row_jan4])
+
+    load_res2 = load_dataset(spark, path_3days)
+    df_clean2, rep2 = clean(spark, std_view=load_res2.standardized_view, view_name="clean_gap_3d")
+
+    res_3d = spark.sql("SELECT date, temperature, temperature_was_filled FROM clean_gap_3d ORDER BY date").collect()
+    assert res_3d[1]["date"].strftime("%Y-%m-%d") == "2010-01-02"
+    expected_interp = round(t0 + (1.0 / 3.0) * (t3 - t0), 4)
+    assert abs(res_3d[1]["temperature"] - expected_interp) < 1e-3, "Calendar-gap <= 3 days must be linearly interpolated"
+    assert res_3d[1]["temperature_was_filled"] is True
+
+
 def test_clean_season_mapping_all_twelve_months(spark):
     """
     Test 7: Season mapping assigns standard Indian meteorological seasons for all 12 months.

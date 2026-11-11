@@ -187,7 +187,7 @@ The cleaning pipeline (`src/cleaner.py`) turns validation findings into precise,
 2. **Step 2: Sentinel Code Removal**: Replaces missing-data indicator codes (`-999`, `-9999`, `9999`) with `NULL` across all numeric columns.
 3. **Step 3: Plausible Physical Range Filtering**: Converts physical anomalies (e.g. humidity > 100%, negative wind speed, extreme pressure) to `NULL`. Optional `--drop-out-of-range` drops records containing temperature outliers instead of nulling.
 4. **Step 4: Smart Deduplication on `(date, location)`**: Removes duplicate entries, retaining the record with the highest non-null metric count (breaking ties in favor of valid `rainfall`).
-5. **Step 5: Short Gap Linear Interpolation**: Interpolates missing values for short gaps ($\le 3$ days) per location over time using SQL window functions (`last()` and `first()` with `IGNORE NULLS`). 
+5. **Step 5: Short Gap Linear Interpolation**: Interpolates missing values for short gaps ($\le 3$ calendar days) per location over time using SQL window functions (`last()` and `first()` with `IGNORE NULLS`). 
    - **Crucial Rule**: `rainfall` is **NEVER** interpolated (rain is episodic; interpolation creates artificial rain).
    - Generates provenance flags: `<col>_was_filled` (`temperature_was_filled`, `humidity_was_filled`, etc.) marking filled values.
    - Gaps $> 3$ days remain `NULL`.
@@ -208,6 +208,63 @@ python scripts/clean_dataset.py --save
 # Optional flags: disable interpolation or drop temperature outliers
 python scripts/clean_dataset.py --no-fill --drop-out-of-range
 ```
+
+---
+
+## Analysis Engine (Phase 5)
+
+The analysis engine executes 22 analytical queries using **pure Spark SQL** to discover long-term trends, seasonal climatologies, precipitation anomalies, and extreme weather events.
+
+### Analytical Capabilities by Category
+
+| Category | Query Key | Description | Key Spark SQL Technique |
+|---|---|---|---|
+| **Temperature** | `temp_yearly` | Annual averages, records, anomalies & YoY changes | Window `AVG() OVER (PARTITION BY location)`, `LAG()` |
+| | `temp_monthly_climatology` | 12-month temperature normals | Multi-year `AVG(temperature)` grouped by month |
+| | `temp_monthly_series` | Chronological monthly averages & anomalies | Window monthly baseline deviation |
+| | `temp_location_ranking` | Thermal ranking with record max/min dates | `RANK() OVER (ORDER BY avg_temp DESC)`, conditional `FIRST()` |
+| | `temp_trend` | Decadal OLS linear trend on complete years | `regr_slope()`, `regr_r2()`, complete year filter |
+| | `temp_seasonal` | Seasonal temperatures & diurnal ranges | `avg_temp_max - avg_temp_min` by season |
+| **Rainfall** | `rain_monthly` | Monthly totals & rainy days ($\ge 2.5\text{ mm}$) | IMD threshold conditional aggregation |
+| | `rain_yearly` | Annual precipitation totals & rainy day counts | Multi-year sums and annual anomalies |
+| | `rain_monthly_climatology` | Climatological precipitation distribution | Multi-year monthly precipitation normals |
+| | `rain_location_ranking` | Wettest to driest location ranking | `RANK() OVER (ORDER BY avg_annual_rain DESC)` |
+| | `rain_seasonal` | Seasonal rainfall distribution & percentage shares | Window `SUM() OVER (PARTITION BY location)` for annual shares |
+| | `rain_unusual_months` | Wet month anomalies via multi-year Z-scores | `STDDEV_SAMP(total_rain)`, threshold $Z \ge 2.0$ |
+| | `rain_heavy_days` | IMD heavy ($\ge 64.5\text{ mm}$), very heavy, extremely heavy | Multi-tier conditional counts |
+| **Climate** | `climate_year_profile` | Multi-variate annual climate profile across all stations | Multi-station annual atmospheric aggregation |
+| | `climate_year_comparison` | Head-to-head comparison between two calendar years | Dynamic metric unpivoting with safe division |
+| | `climate_city_profile` | Comprehensive multi-station climatological baseline | Station geographical and atmospheric profiling |
+| | `extreme_thresholds` | 95th percentile hot days, 5th cold, 95th wet days | `percentile_approx(..., 0.95, 10000)` on clean view |
+| | `extreme_events_yearly` | Annual counts of hot, cold, and extreme rain days | Threshold comparison joined against baseline |
+| | `extreme_top_events` | All-time top 10 hottest, coldest, and wettest days | `DENSE_RANK() OVER (ORDER BY ...)` unioned |
+| | `heatwave_spells` | Consecutive heatwave spells ($\ge 3$ days) | SQL Gaps-and-Islands: `date - ROW_NUMBER()` |
+| | `correlations` | Atmospheric variable correlation matrix | Native Spark `CORR(x, y)` (raw & deseasonalized) |
+| **KPIs** | `kpi_summary` | Executive dashboard climate scorecard | Global multi-metric headline aggregation |
+
+### Analysis CLI Usage
+```bash
+# Run all 22 analyses and display formatted tabular previews
+python scripts/run_analysis.py
+
+# Inspect Spark Catalyst execution plan (shows lazy evaluation and optimization)
+python scripts/run_analysis.py --explain temp_trend
+
+# Run specific query with station and temporal filters
+python scripts/run_analysis.py --location Mumbai --start 2020-01-01 --end 2022-12-31 --only rain_yearly
+
+# Execute and persist complete sanitized text report
+python scripts/run_analysis.py --save-report
+```
+
+### Viva Talking Points
+1. **Pure Spark SQL Transformation Engine**: Transformations, window calculations, and regressions execute strictly in JVM Spark SQL. Zero Python UDFs or RDD operations are used, preventing Python worker serialization overhead and Windows socket instability.
+2. **Lazy Evaluation & Plan Optimization**: Calling an analysis returns a lazy `QueryResult` containing a Spark `DataFrame`. Computation is only executed when materialization occurs (e.g. `count()` or `show()`). Running `--explain <key>` displays the physical execution plan, showing projection pruning and push-down predicates.
+3. **Advanced SQL Techniques**:
+   - **Gaps-and-Islands**: `heatwave_spells` identifies consecutive streaks of hot days by computing `DATE_SUB(date, ROW_NUMBER() OVER (PARTITION BY location ORDER BY date))`. When days are consecutive, the difference remains invariant, grouping unbroken spells without recursive queries.
+   - **Linear Regression**: `temp_trend` leverages Spark's built-in `regr_slope` and `regr_r2` over complete calendar years ($\ge 95\%$ coverage) to calculate decadal warming rates without importing external numerical libraries.
+   - **Multi-Year Standardized Z-Scores**: `rain_unusual_months` computes sample standard deviation across historical years using `STDDEV_SAMP`, flagging precipitation events exceeding 2.0 standard deviations from normal.
+4. **Safety & Governance**: User input is strictly escaped via `sql_string_literal` preventing SQL injection; `QueryResult.to_pandas()` enforces an explicit row threshold (`ANALYSIS_RESULT_MAX_ROWS = 5000`) protecting front-end memory.
 
 ---
 
@@ -242,7 +299,7 @@ Based on rigorous diagnostic testing in the Windows + Python 3.13 + PySpark 3.5.
 | 2 | Dataset acquisition, standard schema & Spark SQL profiling | ✅ Complete |
 | 3 | Ingestion, column mapping, validation & upload handling | ✅ Complete |
 | 4 | Cleaning pipeline & Phase 3 evidence audit | ✅ Complete |
-| 5 | Spark SQL pattern discovery & analysis queries | 🔜 Planned |
+| 5 | Spark SQL pattern discovery & analysis queries | ✅ Complete |
 | 6 | Streamlit dashboard & visualizations | 🔜 Planned |
 
 ---

@@ -34,11 +34,26 @@ from config.settings import APP_NAME  # noqa: E402
 # command. On Windows that resolves to the Microsoft Store stub rather than the
 # venv interpreter, causing "Python worker failed to connect back" errors.
 #
-# Pointing PYSPARK_PYTHON and PYSPARK_DRIVER_PYTHON at sys.executable (which IS
-# the venv Python when this module is imported from inside the venv) solves it
-# on all platforms without hardcoding any path.
-os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
-os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+# If the path contains spaces (common in Windows user directories), unquoted
+# invocations by PySpark internal batch scripts break on spaces and create stray
+# directories. Converting the interpreter path to its 8.3 short form resolves
+# this cleanly.
+def _get_short_path(path: str) -> str:
+    """Return 8.3 short path on Windows if spaces are present to prevent batch script tokenization errors."""
+    if os.name == "nt" and " " in path:
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(500)
+            res = ctypes.windll.kernel32.GetShortPathNameW(path, buf, 500)
+            if res > 0:
+                return buf.value
+        except Exception:
+            pass
+    return path
+
+_python_exe = _get_short_path(sys.executable)
+os.environ["PYSPARK_PYTHON"] = _python_exe
+os.environ["PYSPARK_DRIVER_PYTHON"] = _python_exe
 
 # ── Python 3.12+ compatibility (distutils shim for toPandas) ─────────────────
 # In Python 3.12+, distutils was removed from the standard library (PEP 632).
@@ -225,6 +240,8 @@ def get_spark_session(app_name: str = APP_NAME) -> SparkSession:
             .config("spark.driver.bindAddress", "127.0.0.1")
             # Disable the Spark web UI (port 4040) to prevent port conflicts on Windows.
             .config("spark.ui.enabled", "false")
+            # Optimize partition count for local multi-core analytical workloads.
+            .config("spark.sql.shuffle.partitions", "8")
             .getOrCreate()
         )
 

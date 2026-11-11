@@ -27,6 +27,7 @@ from config.settings import (
     STANDARDIZED_VIEW_NAME,
     SUPPORTED_DELIMITERS,
 )
+from src.sql_utils import quote_identifier, sql_string_literal
 from src.utils import display_path, to_spark_path
 from src.validator import ValidationReport, validate
 
@@ -288,19 +289,19 @@ def standardize(
     # 1. date
     raw_date = mapping.get("date")
     if raw_date:
-        escaped_date = raw_date.replace("`", "``")
-        select_clauses.append(f"to_date(`{escaped_date}`, '{date_format}') AS `date`")
+        escaped_date = quote_identifier(raw_date)
+        select_clauses.append(f"to_date({escaped_date}, '{date_format}') AS `date`")
     else:
         select_clauses.append("CAST(NULL AS DATE) AS `date`")
 
     # 2. location
     raw_loc = mapping.get("location")
     if raw_loc:
-        escaped_loc = raw_loc.replace("`", "``")
-        select_clauses.append(f"CAST(`{escaped_loc}` AS STRING) AS `location`")
+        escaped_loc = quote_identifier(raw_loc)
+        select_clauses.append(f"CAST({escaped_loc} AS STRING) AS `location`")
     elif default_location is not None:
-        safe_loc = default_location.replace("'", "''")
-        select_clauses.append(f"'{safe_loc}' AS `location`")
+        safe_loc = sql_string_literal(default_location)
+        select_clauses.append(f"{safe_loc} AS `location`")
     else:
         select_clauses.append("CAST(NULL AS STRING) AS `location`")
 
@@ -313,8 +314,8 @@ def standardize(
     for field_name in other_fields:
         raw_col = mapping.get(field_name)
         if raw_col:
-            escaped_col = raw_col.replace("`", "``")
-            select_clauses.append(f"try_cast(`{escaped_col}` AS DOUBLE) AS `{field_name}`")
+            escaped_col = quote_identifier(raw_col)
+            select_clauses.append(f"try_cast({escaped_col} AS DOUBLE) AS `{field_name}`")
         else:
             select_clauses.append(f"CAST(NULL AS DOUBLE) AS `{field_name}`")
 

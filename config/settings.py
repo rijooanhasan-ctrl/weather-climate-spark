@@ -93,6 +93,39 @@ FILL_COLUMNS: list[str] = [
 ]
 LOCATION_MAX_NULL_RATE: float = 0.30
 
+# ── Phase 5 Analysis Engine Constants ─────────────────────────────────────────
+# India Meteorological Department (IMD) daily rainfall category thresholds (mm)
+RAINY_DAY_MM: float = 2.5
+HEAVY_RAIN_MM: float = 64.5
+VERY_HEAVY_RAIN_MM: float = 115.6
+EXTREMELY_HEAVY_RAIN_MM: float = 204.5
+
+# Extreme event percentile definitions and Spark SQL percentile_approx accuracy
+HOT_PERCENTILE: float = 0.95
+COLD_PERCENTILE: float = 0.05
+WET_DAY_EXTREME_PERCENTILE: float = 0.95
+PERCENTILE_ACCURACY: int = 10000
+
+# Climate pattern thresholds
+HEATWAVE_MIN_DAYS: int = 3
+RAINFALL_ZSCORE_THRESHOLD: float = 2.0
+MIN_YEARS_FOR_ZSCORE: int = 8
+COMPLETE_YEAR_MIN_COVERAGE: float = 0.95
+TREND_MIN_YEARS: int = 5
+TOP_N_DEFAULT: int = 10
+
+# Multi-variate correlation variables
+CORRELATION_VARIABLES: list[str] = [
+    "temperature",
+    "rainfall",
+    "humidity",
+    "wind_speed",
+    "pressure",
+]
+
+# Query execution and safety limits
+ANALYSIS_RESULT_MAX_ROWS: int = 5000
+
 
 
 
