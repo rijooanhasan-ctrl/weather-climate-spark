@@ -21,6 +21,10 @@ from src.data_loader import LoadResult, load_dataset
 class PipelineError(Exception):
     """Raised when data pipeline validation or ingestion encounters fatal errors."""
 
+    def __init__(self, message: str, errors: list[str] | None = None):
+        super().__init__(message)
+        self.errors = errors if errors is not None else []
+
 
 @dataclass
 class PreparedData:
@@ -81,7 +85,8 @@ def prepare(
     if not load_result.validation.is_valid:
         error_lines = "\n  - ".join(load_result.validation.errors)
         raise PipelineError(
-            f"Dataset validation failed with {len(load_result.validation.errors)} error(s):\n  - {error_lines}"
+            f"Dataset validation failed with {len(load_result.validation.errors)} error(s):\n  - {error_lines}",
+            errors=load_result.validation.errors,
         )
 
     _, cleaning_report = clean(

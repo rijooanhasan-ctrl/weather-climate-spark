@@ -158,3 +158,85 @@ class TestSparkSQL:
         assert set(pdf["parity"]) == {0, 1}
 
 
+class TestShortPathLogic:
+    """Unit tests for Windows 8.3 short-path resolution helper."""
+
+    def test_short_path_non_windows(self, monkeypatch):
+        from src.spark_session import _get_short_path
+
+        monkeypatch.setattr(sys, "platform", "linux")
+        path = "/home/user with spaces/python"
+        assert _get_short_path(path) == path
+
+    def test_short_path_no_spaces(self, monkeypatch):
+        from src.spark_session import _get_short_path
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        path = r"D:\mock_apps\python.exe"
+        assert _get_short_path(path) == path
+
+    def test_short_path_success(self, monkeypatch):
+        import ctypes
+        from src.spark_session import _get_short_path
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        path = r"D:\mock_apps\Folder Name With Spaces\venv\Scripts\python.exe"
+        expected = r"D:\mock_apps\FOLDER~1\venv\Scripts\python.exe"
+
+        def mock_GetShortPathNameW(p, buf, size):
+            buf.value = expected
+            return len(expected)
+
+        monkeypatch.setattr(ctypes.windll.kernel32, "GetShortPathNameW", mock_GetShortPathNameW)
+        assert _get_short_path(path) == expected
+
+    def test_short_path_empty_string_returns_original_with_warning(self, monkeypatch):
+        import ctypes
+        from src.spark_session import _get_short_path
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        path = r"D:\mock_apps\Folder Name\python.exe"
+
+        def mock_GetShortPathNameW(p, buf, size):
+            buf.value = ""
+            return 0
+
+        monkeypatch.setattr(ctypes.windll.kernel32, "GetShortPathNameW", mock_GetShortPathNameW)
+        with pytest.warns(UserWarning, match="returned 0"):
+            res = _get_short_path(path)
+        assert res == path
+
+    def test_short_path_same_long_path_returns_original_with_warning(self, monkeypatch):
+        import ctypes
+        from src.spark_session import _get_short_path
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        path = r"D:\mock_apps\Folder Name\python.exe"
+
+        def mock_GetShortPathNameW(p, buf, size):
+            buf.value = path
+            return len(path)
+
+        monkeypatch.setattr(ctypes.windll.kernel32, "GetShortPathNameW", mock_GetShortPathNameW)
+        with pytest.warns(UserWarning, match="still contains spaces"):
+            res = _get_short_path(path)
+        assert res == path
+
+    def test_short_path_contains_spaces_returns_original_with_warning(self, monkeypatch):
+        import ctypes
+        from src.spark_session import _get_short_path
+
+        monkeypatch.setattr(sys, "platform", "win32")
+        path = r"D:\mock_apps\Folder Name\python.exe"
+
+        def mock_GetShortPathNameW(p, buf, size):
+            buf.value = r"D:\mock_apps\STILL HAS SPACES\python.exe"
+            return len(buf.value)
+
+        monkeypatch.setattr(ctypes.windll.kernel32, "GetShortPathNameW", mock_GetShortPathNameW)
+        with pytest.warns(UserWarning, match="still contains spaces"):
+            res = _get_short_path(path)
+        assert res == path
+
+
+

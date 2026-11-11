@@ -268,6 +268,41 @@ python scripts/run_analysis.py --save-report
 
 ---
 
+## Dashboard (Phase 6)
+
+The Streamlit dashboard foundation provides an interactive user interface driven exclusively by **Apache Spark SQL**.
+
+### How to Launch
+```bash
+streamlit run app.py
+```
+*(On first load, Apache Spark initializes in the background and prepares/caches the clean dataset in approximately 20–30 seconds).*
+
+### Dashboard Architecture & Features
+* **Sidebar Controls**:
+  - **Data Source**: Switch between the primary built-in 8-city historical dataset and custom CSV uploads.
+  - **Upload & Column Mapping**: Upload custom daily weather CSVs (up to 200 MB), inspect detected delimiters and headers, map source fields to the 11 standard columns with collision prevention, and optionally provide fallback location names.
+  - **Filters**: Multi-select stations, select bounded date ranges, filter specific years, and filter meteorological seasons. Empty location selections render informative warnings without error.
+* **Top Metric Strip**: Displays the active dataset label, origin source (`BUILTIN` or `UPLOAD`), raw row count, clean row count, and count of linearly interpolated values.
+* **Dashboard Tabs**:
+  1. **Overview**: Executive scorecard with 10 headline KPI metric cards across two rows (records, stations, temperature averages and extremes with date/city captions, total rainfall, humidity, wind, pressure, and interpolated value counts). Includes an expander displaying the exact Spark SQL query and parameters.
+  2. **Data Quality**: Structural validation status, error/warning lists, full column statistical profiles (min, max, null rates, units), and location record coverage.
+  3. **Cleaning Report**: Step-by-step cleaning audit table showing rows before/after and values modified, pipeline warnings, and dataset immutability guarantee notice.
+  4. **Data Preview**: Dynamic preview table showing clean records ordered by `location, date` with user-configurable row counts (up to 1,000 rows).
+  5. **Spark SQL Log & Explain**: Expanders displaying every SQL query executed across ingestion, cleaning, and analysis, with an interactive button to inspect Spark Catalyst physical execution plans (`explain()`).
+  6. **Analyses (Phase 7 Preview)**: Catalogue of all 22 analytical pattern discovery queries wired into the Spark SQL engine.
+* **Architecture & Memory Governance**:
+  - `src/dashboard/services.py` contains zero `streamlit` imports, ensuring 100% independent unit testability.
+  - `ActiveDatasetStore` manages the active session view. When switching datasets, it explicitly uncaches the old table (`spark.catalog.uncacheTable`) so the server never serves stale data.
+  - **Single Active Dataset Limitation**: Because Spark temporary views are session-wide, the local application instance maintains one active dataset view at a time.
+  - All cached UI queries (`st.cache_data`) are keyed by `(store.version, hashable_filters, n)` and operate strictly on plain Python/Pandas structures without caching Spark DataFrames.
+* **Known Acceptance Reference Values (Quick Correctness Check)**:
+  - *All Data (No Filters)*: 46,752 records, avg temperature 24.6 °C, max temperature 46.6 °C at Jaipur on 2024-05-27, total rainfall 174,900.5 mm.
+  - *Filtered (Mumbai, 2020-01-01 to 2022-12-31)*: 1,096 records, total rainfall 7,706.1 mm.
+* **Testing Note**: Upload column mapping cannot be tested by AppTest due to Streamlit 1.40.2 file_uploader test harness limitations and was verified manually.
+
+---
+
 ## Project Engineering Rules
 
 Based on rigorous diagnostic testing in the Windows + Python 3.13 + PySpark 3.5.3 environment:
@@ -300,7 +335,8 @@ Based on rigorous diagnostic testing in the Windows + Python 3.13 + PySpark 3.5.
 | 3 | Ingestion, column mapping, validation & upload handling | ✅ Complete |
 | 4 | Cleaning pipeline & Phase 3 evidence audit | ✅ Complete |
 | 5 | Spark SQL pattern discovery & analysis queries | ✅ Complete |
-| 6 | Streamlit dashboard & visualizations | 🔜 Planned |
+| 6 | Streamlit dashboard foundation, column mapping & KPI scorecard | ✅ Complete |
+| 7 | Interactive Plotly charts & auto-generated text insights | 🔜 Planned |
 
 ---
 

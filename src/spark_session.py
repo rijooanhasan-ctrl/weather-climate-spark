@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 from pyspark.sql import SparkSession
@@ -39,16 +40,45 @@ from config.settings import APP_NAME  # noqa: E402
 # directories. Converting the interpreter path to its 8.3 short form resolves
 # this cleanly.
 def _get_short_path(path: str) -> str:
-    """Return 8.3 short path on Windows if spaces are present to prevent batch script tokenization errors."""
-    if os.name == "nt" and " " in path:
-        try:
-            import ctypes
-            buf = ctypes.create_unicode_buffer(500)
-            res = ctypes.windll.kernel32.GetShortPathNameW(path, buf, 500)
-            if res > 0:
-                return buf.value
-        except Exception:
-            pass
+    """
+    Return 8.3 short path on Windows if spaces are present to prevent batch script tokenization errors.
+
+    Behavior:
+    - Does nothing on non-Windows platforms.
+    - Does nothing when the path contains no spaces.
+    - Falls back to original path with a one-line warning if GetShortPathNameW
+      returns an empty string, the same long path, or a path still containing spaces.
+    """
+    if sys.platform != "win32":
+        return path
+    if " " not in path:
+        return path
+    try:
+        import ctypes
+
+        buf = ctypes.create_unicode_buffer(500)
+        res = ctypes.windll.kernel32.GetShortPathNameW(path, buf, 500)
+        if res > 0:
+            short = buf.value
+            if short and short != path and " " not in short:
+                return short
+            warnings.warn(
+                f"[WARN] 8.3 short path generation failed or still contains spaces for '{path}'. Using original path.",
+                UserWarning,
+                stacklevel=2,
+            )
+        else:
+            warnings.warn(
+                f"[WARN] GetShortPathNameW returned 0 for '{path}'. Using original path.",
+                UserWarning,
+                stacklevel=2,
+            )
+    except Exception as exc:
+        warnings.warn(
+            f"[WARN] Unable to convert path '{path}' to 8.3 short path: {exc}. Using original path.",
+            UserWarning,
+            stacklevel=2,
+        )
     return path
 
 _python_exe = _get_short_path(sys.executable)

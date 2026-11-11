@@ -135,7 +135,7 @@ def test_ingest_with_injected_defects(spark, tmp_path, raw_dataset_slices):
     and standardized row count equals raw row count.
     """
     header = list(raw_dataset_slices["header"])
-    rows = [list(r) for r in raw_dataset_slices["bengaluru_rows"][:60]]
+    rows = [list(r) for r in raw_dataset_slices["bengaluru_rows"]] + [list(r) for r in raw_dataset_slices["mumbai_rows"]]
 
     temp_idx = header.index("temperature")
     rain_idx = header.index("rainfall")
@@ -170,9 +170,10 @@ def test_ingest_with_injected_defects(spark, tmp_path, raw_dataset_slices):
         writer.writerows(rows)
 
     result = load_dataset(spark, file_path)
-    warnings = result.validation.warnings
+    report = result.validation
+    warnings = report.warnings
 
-    raw_view = result.validation.info.get("raw_view", "weather_raw")
+    raw_view = report.info.get("raw_view", "weather_raw")
     std_view = result.standardized_view
     raw_row_count = int(spark.sql(f"SELECT COUNT(*) AS n FROM {raw_view}").collect()[0]["n"])
     std_row_count = int(spark.sql(f"SELECT COUNT(*) AS n FROM {std_view}").collect()[0]["n"])
@@ -181,28 +182,33 @@ def test_ingest_with_injected_defects(spark, tmp_path, raw_dataset_slices):
     print("\n" + "=" * 65)
     print("VALIDATOR DEFECT AUDIT RESULTS:")
     print(f"Raw row count: {raw_row_count}, Standardized row count: {std_row_count}")
-    print(f"Rows with -999 in rainfall: {result.validation.info['sentinel_counts'].get('rainfall', 0)}")
-    print(f"Unparseable temperature cells ('abc'): {result.validation.info['numeric_parse_failures'].get('temperature', 0)}")
-    print(f"Duplicated (date, location) keys: {result.validation.info.get('duplicate_keys_count', 0)}")
-    print(f"Blank humidity cells: {result.validation.info['null_counts'].get('humidity', 0)}")
-    print(f"Out-of-range temperature (150): {result.validation.info['out_of_range_counts'].get('temperature', 0)}")
-    print("Validator warnings:")
+    print(f"Report errors ({len(report.errors)}): {report.errors}")
+    print(f"Report warnings ({len(report.warnings)}):")
     for w in warnings:
         print(f"  - {w}")
+    print(f"Rows with -999 in rainfall: {report.info['sentinel_counts'].get('rainfall', 0)}")
+    print(f"Unparseable temperature cells ('abc'): {report.info['numeric_parse_failures'].get('temperature', 0)}")
+    print(f"Duplicated (date, location) keys: {report.info.get('duplicate_keys_count', 0)}")
+    print(f"Blank humidity cells: {report.info['null_counts'].get('humidity', 0)}")
+    print(f"Out-of-range temperature (150): {report.info['out_of_range_counts'].get('temperature', 0)}")
     print("=" * 65 + "\n")
 
-    # Assert all specific counts match exactly
-    assert result.validation.info["sentinel_counts"].get("rainfall") == 3, "Expected 3 sentinel values in rainfall"
-    assert result.validation.info["numeric_parse_failures"].get("temperature") == 2, "Expected 2 numeric parse failures in temperature"
-    assert result.validation.info.get("duplicate_keys_count") == 2, "Expected 2 duplicate keys"
-    assert result.validation.info["null_counts"].get("humidity") == 4, "Expected 4 blank/null humidity cells"
-    assert result.validation.info["out_of_range_counts"].get("temperature") == 1, "Expected 1 out-of-range temperature"
+    # Assert report errors is empty and report counts match exact expected defect counts
+    assert len(report.errors) == 0, f"Expected 0 errors, got: {report.errors}"
+    assert report.info["sentinel_counts"].get("rainfall") == 3, "Expected 3 sentinel values in rainfall"
+    assert report.info["numeric_parse_failures"].get("temperature") == 2, "Expected 2 numeric parse failures in temperature"
+    assert report.info.get("duplicate_keys_count") == 2, "Expected 2 duplicate keys"
+    assert report.info["null_counts"].get("humidity") == 4, "Expected 4 blank/null humidity cells"
+    assert report.info["out_of_range_counts"].get("temperature") == 1, "Expected 1 out-of-range temperature"
+    assert raw_row_count == 402, f"Expected 402 raw rows, got {raw_row_count}"
     assert raw_row_count == std_row_count, f"Raw ({raw_row_count}) != Standardized ({std_row_count})"
 
-    # Assert warning text matches
-    assert any("sentinel" in w.lower() and "rainfall" in w for w in warnings), "Missing rainfall sentinel warning"
-    assert any("outside plausible range" in w.lower() and "temperature" in w for w in warnings), "Missing temperature range warning"
-    assert any("failed numeric parsing" in w.lower() and "temperature" in w for w in warnings), "Missing temperature numeric parse warning"
+    # Assert warning text matches exact numbers
+    assert any("Column 'rainfall' contains 3 sentinel value(s)" in w for w in warnings), "Missing rainfall sentinel warning"
+    assert any("Column 'temperature' has 1 value(s) outside plausible range" in w for w in warnings), "Missing temperature range warning"
+    assert any("Column 'temperature' had 2 value(s) that failed numeric parsing" in w for w in warnings), "Missing temperature numeric parse warning"
+    assert any("Found 2 duplicate (date, location) key(s)" in w for w in warnings), "Missing duplicate warning"
+    assert any("Column 'humidity' has 4 null value(s)" in w for w in warnings), "Missing humidity null warning"
     assert any("duplicate" in w.lower() for w in warnings), "Missing duplicate warning"
     assert any("null value" in w.lower() and "humidity" in w for w in warnings), "Missing humidity null warning"
 

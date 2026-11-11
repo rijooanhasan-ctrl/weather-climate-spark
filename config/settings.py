@@ -126,6 +126,15 @@ CORRELATION_VARIABLES: list[str] = [
 # Query execution and safety limits
 ANALYSIS_RESULT_MAX_ROWS: int = 5000
 
+# ── Phase 6 Dashboard Constants ───────────────────────────────────────────────
+DASHBOARD_TITLE: str = "Weather and Climate Pattern Discovery"
+DASHBOARD_SUBTITLE: str = "Powered by Apache Spark SQL"
+PREVIEW_ROWS_DEFAULT: int = 100
+PREVIEW_ROWS_MAX: int = 1000
+BUILTIN_DATASET_LABEL: str = "Built-in dataset: 8 Indian cities, 2010-2025"
+NO_COLUMN_LABEL: str = "(not in file)"
+
+
 
 
 
