@@ -35,6 +35,11 @@ data/uploads/*
 spark-warehouse/
 metastore_db/
 derby.log
+*.crc
+_SUCCESS
+_temporary/
+_temp_write_*/
+
 
 # ── Jupyter notebooks checkpoints ────────────────────────
 .ipynb_checkpoints/
@@ -43,6 +48,9 @@ derby.log
 .DS_Store
 Thumbs.db
 desktop.ini
+Hasan/
+Rijooan/
+(/
 
 # ── IDE / editor ─────────────────────────────────────────
 .idea/

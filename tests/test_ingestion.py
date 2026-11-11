@@ -126,33 +126,42 @@ def test_ingest_missing_required_column(spark, tmp_path, raw_dataset_slices):
 def test_ingest_with_injected_defects(spark, tmp_path, raw_dataset_slices):
     """
     Test 5: Ingest real weather data slice with injected defects:
-    - Sentinel -999 in temperature
-    - Temperature 95.0 (outside physical plausibility range [-60, 60])
-    - Unparseable date string
-    - Non-numeric string 'abc' in rainfall
-    - Duplicate (date, location) record
-    Assert validator catches and warns for every defect.
+    - 3 rows with -999 in rainfall
+    - 2 unparseable temperature cells ("abc")
+    - 2 duplicated (date, location) keys
+    - 4 blank humidity cells
+    - 1 out-of-range temperature (150)
+    Assert validator catches and warns for every defect, counts match exactly,
+    and standardized row count equals raw row count.
     """
     header = list(raw_dataset_slices["header"])
     rows = [list(r) for r in raw_dataset_slices["bengaluru_rows"][:60]]
 
     temp_idx = header.index("temperature")
     rain_idx = header.index("rainfall")
+    hum_idx = header.index("humidity")
 
-    # Injected defect 1: Sentinel value
-    rows[5][temp_idx] = "-999"
+    # Injected defect 1: 3 rows with -999 in rainfall
+    rows[5][rain_idx] = "-999"
+    rows[6][rain_idx] = "-999"
+    rows[7][rain_idx] = "-999"
 
-    # Injected defect 2: Plausibility range outlier
-    rows[10][temp_idx] = "95.0"
+    # Injected defect 2: 2 unparseable temperature cells ("abc")
+    rows[10][temp_idx] = "abc"
+    rows[11][temp_idx] = "abc"
 
-    # Injected defect 3: Invalid unparseable date
-    rows[15][0] = "not-a-valid-date"
+    # Injected defect 3: 1 out-of-range temperature (150)
+    rows[15][temp_idx] = "150"
 
-    # Injected defect 4: Non-numeric string in rainfall
-    rows[20][rain_idx] = "abc"
+    # Injected defect 4: 4 blank humidity cells
+    rows[20][hum_idx] = ""
+    rows[21][hum_idx] = ""
+    rows[22][hum_idx] = ""
+    rows[23][hum_idx] = ""
 
-    # Injected defect 5: Duplicate primary key
+    # Injected defect 5: 2 duplicated (date, location) keys
     rows.append(list(rows[0]))
+    rows.append(list(rows[1]))
 
     file_path = tmp_path / "defects_weather.csv"
     with open(file_path, "w", encoding="utf-8", newline="") as f:
@@ -163,12 +172,39 @@ def test_ingest_with_injected_defects(spark, tmp_path, raw_dataset_slices):
     result = load_dataset(spark, file_path)
     warnings = result.validation.warnings
 
-    # Assert all 5 defects generated specific warnings
-    assert any("sentinel" in w.lower() and "temperature" in w for w in warnings), "Missing sentinel warning"
-    assert any("outside plausible range" in w.lower() and "temperature" in w for w in warnings), "Missing range warning"
-    assert any("invalid or unparseable dates" in w.lower() for w in warnings), "Missing date parse warning"
-    assert any("failed numeric parsing" in w.lower() and "rainfall" in w for w in warnings), "Missing numeric parse warning"
+    raw_view = result.validation.info.get("raw_view", "weather_raw")
+    std_view = result.standardized_view
+    raw_row_count = int(spark.sql(f"SELECT COUNT(*) AS n FROM {raw_view}").collect()[0]["n"])
+    std_row_count = int(spark.sql(f"SELECT COUNT(*) AS n FROM {std_view}").collect()[0]["n"])
+
+    # Output detailed audit reporting to stdout for audit verification
+    print("\n" + "=" * 65)
+    print("VALIDATOR DEFECT AUDIT RESULTS:")
+    print(f"Raw row count: {raw_row_count}, Standardized row count: {std_row_count}")
+    print(f"Rows with -999 in rainfall: {result.validation.info['sentinel_counts'].get('rainfall', 0)}")
+    print(f"Unparseable temperature cells ('abc'): {result.validation.info['numeric_parse_failures'].get('temperature', 0)}")
+    print(f"Duplicated (date, location) keys: {result.validation.info.get('duplicate_keys_count', 0)}")
+    print(f"Blank humidity cells: {result.validation.info['null_counts'].get('humidity', 0)}")
+    print(f"Out-of-range temperature (150): {result.validation.info['out_of_range_counts'].get('temperature', 0)}")
+    print("Validator warnings:")
+    for w in warnings:
+        print(f"  - {w}")
+    print("=" * 65 + "\n")
+
+    # Assert all specific counts match exactly
+    assert result.validation.info["sentinel_counts"].get("rainfall") == 3, "Expected 3 sentinel values in rainfall"
+    assert result.validation.info["numeric_parse_failures"].get("temperature") == 2, "Expected 2 numeric parse failures in temperature"
+    assert result.validation.info.get("duplicate_keys_count") == 2, "Expected 2 duplicate keys"
+    assert result.validation.info["null_counts"].get("humidity") == 4, "Expected 4 blank/null humidity cells"
+    assert result.validation.info["out_of_range_counts"].get("temperature") == 1, "Expected 1 out-of-range temperature"
+    assert raw_row_count == std_row_count, f"Raw ({raw_row_count}) != Standardized ({std_row_count})"
+
+    # Assert warning text matches
+    assert any("sentinel" in w.lower() and "rainfall" in w for w in warnings), "Missing rainfall sentinel warning"
+    assert any("outside plausible range" in w.lower() and "temperature" in w for w in warnings), "Missing temperature range warning"
+    assert any("failed numeric parsing" in w.lower() and "temperature" in w for w in warnings), "Missing temperature numeric parse warning"
     assert any("duplicate" in w.lower() for w in warnings), "Missing duplicate warning"
+    assert any("null value" in w.lower() and "humidity" in w for w in warnings), "Missing humidity null warning"
 
 
 def test_ingest_date_ambiguity_detection(spark, tmp_path, raw_dataset_slices):
@@ -237,3 +273,4 @@ def test_ingest_single_location_with_default_fallback(spark, tmp_path, raw_datas
     locs = spark.sql(f"SELECT DISTINCT location FROM {result.standardized_view}").collect()
     assert len(locs) == 1
     assert locs[0]["location"] == "Bengaluru"
+

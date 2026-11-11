@@ -78,5 +78,21 @@ NUMERIC_PARSE_WARN_BELOW: float = 0.95
 NULL_WARN_ABOVE: float = 0.20
 OUT_OF_RANGE_UNIT_WARN_ABOVE: float = 0.50
 
+# ── Cleaning Pipeline Configuration ───────────────────────────────────────────
+CLEAN_VIEW_NAME: str = "weather_clean"
+PROCESSED_CLEAN_PATH: Path = PROCESSED_DATA_DIR / "weather_clean.csv"
+CLEANING_REPORT_PATH: Path = PROCESSED_DATA_DIR / "cleaning_report.json"
+MAX_FILL_GAP_DAYS: int = 3
+FILL_COLUMNS: list[str] = [
+    "temperature",
+    "temp_max",
+    "temp_min",
+    "humidity",
+    "wind_speed",
+    "pressure",
+]
+LOCATION_MAX_NULL_RATE: float = 0.30
+
+
 
 

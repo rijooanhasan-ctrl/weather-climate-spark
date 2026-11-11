@@ -92,6 +92,14 @@ def validate(
         report.sql_log.append({"title": title, "sql": sql.strip()})
         return spark.sql(sql)
 
+    report.info["raw_view"] = raw_view
+    report.info["std_view"] = std_view
+    report.info["numeric_parse_failures"] = {}
+    report.info["null_counts"] = {}
+    report.info["sentinel_counts"] = {}
+    report.info["out_of_range_counts"] = {}
+    report.info["duplicate_keys_count"] = 0
+
     # ── 1. Check Required Columns and Duplicate Targets ─────────────────────────
     for col in REQUIRED_COLUMNS:
         if col == "location" and default_location is not None:
@@ -185,6 +193,7 @@ def validate(
             parsed_cnt = int(std_counts[f"{col}_parsed_cnt"])
             if raw_cnt > 0 and parsed_cnt < raw_cnt:
                 failed_cnt = raw_cnt - parsed_cnt
+                report.info["numeric_parse_failures"][col] = failed_cnt
                 parse_pct = parsed_cnt / raw_cnt
                 if parse_pct < NUMERIC_PARSE_WARN_BELOW:
                     report.warnings.append(
@@ -211,10 +220,15 @@ def validate(
 
     for col in columns_to_inspect:
         null_cnt = int(null_row[f"{col}_nulls"])
-        null_rate = null_cnt / total_rows
+        report.info["null_counts"][col] = null_cnt
+        null_rate = null_cnt / total_rows if total_rows > 0 else 0.0
         if null_rate > NULL_WARN_ABOVE:
             report.warnings.append(
                 f"Column '{col}' has {null_cnt} null value(s) ({null_rate:.1%}, exceeds warning threshold {NULL_WARN_ABOVE:.0%})."
+            )
+        elif null_cnt > 0:
+            report.warnings.append(
+                f"Column '{col}' has {null_cnt} null value(s) ({null_rate:.1%})."
             )
 
     # ── 6. Sentinel Value Check ───────────────────────────────────────────────
@@ -229,6 +243,7 @@ def validate(
         for col in mapped_numeric:
             s_cnt = int(sentinel_row[f"{col}_sentinels"])
             if s_cnt > 0:
+                report.info["sentinel_counts"][col] = s_cnt
                 report.warnings.append(
                     f"Column '{col}' contains {s_cnt} sentinel value(s) ({sentinel_str})."
                 )
@@ -253,6 +268,7 @@ def validate(
             valid_cnt = int(range_row[f"{col}_valid"])
             low, high = PLAUSIBLE_RANGES[col]
             if out_cnt > 0:
+                report.info["out_of_range_counts"][col] = out_cnt
                 out_pct = out_cnt / valid_cnt if valid_cnt > 0 else 0.0
                 if out_pct > OUT_OF_RANGE_UNIT_WARN_ABOVE:
                     report.warnings.append(
@@ -277,9 +293,10 @@ def validate(
     """
     dup_row = _execute_logged_sql("Check duplicate (date, location) primary keys", dup_sql).collect()[0]
     dup_count = int(dup_row["dup_count"])
+    report.info["duplicate_keys_count"] = dup_count
     if dup_count > 0:
         report.warnings.append(
-            f"Found {dup_count} duplicate (date, location) record(s)."
+            f"Found {dup_count} duplicate (date, location) key(s)."
         )
 
     # ── 9. Coverage Per Location ──────────────────────────────────────────────

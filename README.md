@@ -84,20 +84,23 @@ weather-climate-spark/
 │   ├── upload.py           Safe file upload handling & path traversal protection
 │   ├── data_loader.py      CSV ingestion, date detection & schema standardization
 │   ├── validator.py        Spark SQL validation & quality profiling
-│   └── queries/            Spark SQL query modules (Phase 4+)
+│   ├── cleaner.py          Pure Spark SQL data cleaning pipeline & audit tracking
+│   └── queries/            Spark SQL query modules (Phase 5+)
 ├── tests/
 │   ├── conftest.py         Shared session-scoped Spark fixture & real data slices
 │   ├── test_environment.py Pytest environment checks
 │   ├── test_schema.py      Schema, column alias, and mapping unit tests
 │   ├── test_dataset.py     Dataset integrity and plausibility tests
 │   ├── test_upload.py      Upload sanitization, security & constraint tests
-│   └── test_ingestion.py   End-to-end ingestion, mapping & validation tests
+│   ├── test_ingestion.py   End-to-end ingestion, mapping & validation tests
+│   └── test_cleaning.py    Exhaustive data cleaning pipeline & gap interpolation tests
 ├── scripts/
 │   ├── verify_environment.py    One-shot environment verifier
 │   ├── diagnose_spark_features.py Diagnostic runner for PySpark capabilities
 │   ├── download_weather_data.py  Acquires real ERA5 daily observations
 │   ├── profile_dataset.py        Spark SQL structural and statistical profiler
-│   └── ingest_dataset.py         CLI demo for dataset ingestion and validation
+│   ├── ingest_dataset.py         CLI demo for dataset ingestion and validation
+│   └── clean_dataset.py          CLI driver for Spark SQL cleaning pipeline
 ├── docs/
 │   ├── DATASET.md          Provenance, schema dictionary, and atmospheric notes
 │   ├── dataset_profile.txt Generated output from Spark SQL profiling
@@ -175,6 +178,39 @@ python scripts/ingest_dataset.py --file single_station.csv --location-name "Beng
 
 ---
 
+## Data Cleaning Pipeline (Phase 4)
+
+The cleaning pipeline (`src/cleaner.py`) turns validation findings into precise, audit-tracked transformations implemented **entirely in Spark SQL**. Raw input datasets are strictly immutable and never modified or overwritten.
+
+### 7-Step Pure Spark SQL Pipeline
+1. **Step 1: Drop Unusable Records**: Drops rows where `date IS NULL`, `location IS NULL`, or `TRIM(location) = ''`.
+2. **Step 2: Sentinel Code Removal**: Replaces missing-data indicator codes (`-999`, `-9999`, `9999`) with `NULL` across all numeric columns.
+3. **Step 3: Plausible Physical Range Filtering**: Converts physical anomalies (e.g. humidity > 100%, negative wind speed, extreme pressure) to `NULL`. Optional `--drop-out-of-range` drops records containing temperature outliers instead of nulling.
+4. **Step 4: Smart Deduplication on `(date, location)`**: Removes duplicate entries, retaining the record with the highest non-null metric count (breaking ties in favor of valid `rainfall`).
+5. **Step 5: Short Gap Linear Interpolation**: Interpolates missing values for short gaps ($\le 3$ days) per location over time using SQL window functions (`last()` and `first()` with `IGNORE NULLS`). 
+   - **Crucial Rule**: `rainfall` is **NEVER** interpolated (rain is episodic; interpolation creates artificial rain).
+   - Generates provenance flags: `<col>_was_filled` (`temperature_was_filled`, `humidity_was_filled`, etc.) marking filled values.
+   - Gaps $> 3$ days remain `NULL`.
+6. **Step 6: Temporal Quality Flags**: Computes `year`, `month`, `day_of_year`, and Meteorological `season` (`Winter`: Jan-Feb, `Summer`: Mar-May, `Monsoon`: Jun-Sep, `Post-monsoon`: Oct-Dec) mapping all 12 calendar months.
+7. **Step 7: Final Clean View Registration**: Registers the canonical temporary view `weather_clean` ordered by `location, date`, and compiles structured audit metrics (`CleaningReport`).
+
+### Cleaning CLI Usage
+```bash
+# Run cleaning pipeline on default dataset (view in-memory audit table)
+python scripts/clean_dataset.py
+
+# Clean custom dataset with explicit mapping
+python scripts/clean_dataset.py --file path/to/dataset.csv --map temp=temperature
+
+# Clean and persist to data/processed/weather_clean.csv & cleaning_report.json
+python scripts/clean_dataset.py --save
+
+# Optional flags: disable interpolation or drop temperature outliers
+python scripts/clean_dataset.py --no-fill --drop-out-of-range
+```
+
+---
+
 ## Project Engineering Rules
 
 Based on rigorous diagnostic testing in the Windows + Python 3.13 + PySpark 3.5.3 environment:
@@ -205,8 +241,9 @@ Based on rigorous diagnostic testing in the Windows + Python 3.13 + PySpark 3.5.
 | 1B | JAVA_HOME auto-detection & diagnostics | ✅ Complete |
 | 2 | Dataset acquisition, standard schema & Spark SQL profiling | ✅ Complete |
 | 3 | Ingestion, column mapping, validation & upload handling | ✅ Complete |
-| 4 | Spark SQL analysis & pattern discovery | 🔜 Planned |
-| 5 | Streamlit dashboard & visualizations | 🔜 Planned |
+| 4 | Cleaning pipeline & Phase 3 evidence audit | ✅ Complete |
+| 5 | Spark SQL pattern discovery & analysis queries | 🔜 Planned |
+| 6 | Streamlit dashboard & visualizations | 🔜 Planned |
 
 ---
 
