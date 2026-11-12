@@ -92,7 +92,7 @@ def parse_args() -> argparse.Namespace:
         "--file",
         type=str,
         default=str(PRIMARY_DATASET_PATH),
-        help="Path to the weather CSV dataset (default: primary dataset).",
+        help=f"Path to the weather CSV dataset (default: {display_path(PRIMARY_DATASET_PATH)}).",
     )
     parser.add_argument(
         "--map",

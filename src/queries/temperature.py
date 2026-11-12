@@ -305,7 +305,7 @@ def temp_trend(
         SELECT
             r.location,
             ROUND(r.raw_slope, 4) AS slope_c_per_year,
-            ROUND(r.raw_slope * 10, 4) AS slope_per_decade,
+            ROUND(r.raw_slope * 10, 3) AS slope_per_decade,
             ROUND(COALESCE(r.raw_r2, 0.0), 4) AS r_squared,
             r.n_years,
             ROUND(e.first_year_avg, 2) AS first_year_avg,
@@ -357,7 +357,7 @@ def temp_trend(
         SELECT
             r.location,
             ROUND(COALESCE(r.raw_slope, 0.0), 4) AS slope_c_per_year,
-            ROUND(COALESCE(r.raw_slope, 0.0) * 10, 4) AS slope_per_decade,
+            ROUND(COALESCE(r.raw_slope, 0.0) * 10, 3) AS slope_per_decade,
             ROUND(COALESCE(r.raw_r2, 0.0), 4) AS r_squared,
             r.n_years,
             ROUND(e.first_year_avg, 2) AS first_year_avg,

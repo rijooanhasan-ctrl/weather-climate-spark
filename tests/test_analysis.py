@@ -154,6 +154,7 @@ def test_temp_trend_least_squares(spark, clean_analysis_view, raw_rows):
 
     spark_b = trends["Bengaluru"]
     assert math.isclose(spark_b["slope_c_per_year"], py_slope, abs_tol=1e-3)
+    assert math.isclose(spark_b["slope_per_decade"], py_slope * 10, abs_tol=1e-2)
     assert math.isclose(spark_b["r_squared"], py_r2, abs_tol=1e-2)
     assert spark_b["n_years"] == 16
 
@@ -317,10 +318,16 @@ def test_extreme_thresholds_percentiles(spark, clean_analysis_view, raw_rows):
 def test_heatwave_spells_gaps_and_islands(spark, clean_analysis_view, raw_rows):
     """
     Spells found by Spark gaps-and-islands match Python consecutive day scanning.
+    Threshold is independently derived from the sorted 95th percentile of Delhi observations.
     """
-    # Find hot threshold for Delhi in Spark
+    # 1. Independently derive hot-day threshold from sorted real CSV values (95th percentile)
+    delhi_tmax = sorted(float(r["temp_max"]) for r in raw_rows if r["location"] == "Delhi")
+    delhi_hot_thresh = delhi_tmax[int(0.95 * len(delhi_tmax))]
+
+    # 2. Verify Spark's extreme_thresholds for Delhi independently matches this threshold
     thresh_df = extreme_thresholds(spark, filters=Filters(locations=["Delhi"]), view=clean_analysis_view)
-    delhi_hot_thresh = [r for r in thresh_df.df.collect() if r.location == "Delhi"][0].hot_day_threshold
+    spark_thresh = [r for r in thresh_df.df.collect() if r.location == "Delhi"][0].hot_day_threshold
+    assert abs(spark_thresh - delhi_hot_thresh) <= 0.1
 
     # Find spells in Python
     from datetime import date, timedelta

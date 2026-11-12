@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.schema import STANDARD_SCHEMA  # noqa: E402
-from config.settings import PRIMARY_DATASET_PATH  # noqa: E402
+from config.settings import PRIMARY_DATASET_PATH, FILL_COLUMNS  # noqa: E402
 from src.cleaner import clean  # noqa: E402
 from src.data_loader import load_dataset  # noqa: E402
 
@@ -439,3 +439,56 @@ def test_clean_raw_data_safety(spark):
     file_stat_after = PRIMARY_DATASET_PATH.stat()
     assert file_stat_before.st_size == file_stat_after.st_size
     assert file_stat_before.st_mtime == file_stat_after.st_mtime
+
+
+@pytest.mark.parametrize("fill_col", FILL_COLUMNS)
+def test_clean_fill_columns_parametrized_linear_interpolation(spark, tmp_path, raw_dataset_slices, fill_col):
+    """
+    Parametrized test over all FILL_COLUMNS using real values:
+    - A 2-row gap is interpolated linearly.
+    - Assert arithmetic against two real neighbours: v1 = v0 + 1/3*(v3-v0), v2 = v0 + 2/3*(v3-v0).
+    - Flag <col>_was_filled is True only for that column and those 2 rows.
+    - Other columns are untouched and their was_filled flags are False.
+    """
+    header = list(raw_dataset_slices["header"])
+    rows = [list(r) for r in raw_dataset_slices["bengaluru_rows"][:10]]
+    col_idx = header.index(fill_col)
+
+    v0 = float(rows[0][col_idx])
+    v3 = float(rows[3][col_idx])
+
+    # 2-row gap on rows 1 and 2
+    rows[1][col_idx] = ""
+    rows[2][col_idx] = ""
+
+    file_path = tmp_path / f"gap_fill_{fill_col}.csv"
+    with open(file_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows)
+
+    load_res = load_dataset(spark, file_path)
+    view_name = f"clean_test_fill_{fill_col}"
+    df_clean, report = clean(spark, std_view=load_res.standardized_view, view_name=view_name)
+
+    clean_records = spark.sql(f"SELECT * FROM {view_name} ORDER BY date").collect()
+
+    expected_v1 = round(v0 + (1.0 / 3.0) * (v3 - v0), 4)
+    expected_v2 = round(v0 + (2.0 / 3.0) * (v3 - v0), 4)
+
+    assert abs(clean_records[1][fill_col] - expected_v1) < 1e-3
+    assert abs(clean_records[2][fill_col] - expected_v2) < 1e-3
+    assert clean_records[1][f"{fill_col}_was_filled"] is True
+    assert clean_records[2][f"{fill_col}_was_filled"] is True
+    assert clean_records[0][f"{fill_col}_was_filled"] is False
+    assert clean_records[3][f"{fill_col}_was_filled"] is False
+
+    # Other columns are untouched and flags are False
+    for other_col in FILL_COLUMNS:
+        if other_col != fill_col:
+            other_idx = header.index(other_col)
+            assert clean_records[1][f"{other_col}_was_filled"] is False
+            assert clean_records[2][f"{other_col}_was_filled"] is False
+            assert abs(clean_records[1][other_col] - float(rows[1][other_idx])) < 1e-3
+            assert abs(clean_records[2][other_col] - float(rows[2][other_idx])) < 1e-3
+

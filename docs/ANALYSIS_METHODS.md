@@ -228,3 +228,35 @@ All thresholds follow international and national meteorological standards:
 2. **Correlation vs. Causation**: Significant Pearson correlations (e.g. between temperature and humidity) describe empirical atmospheric co-variation and synoptic monsoon dynamics, not direct causal mechanisms.
 3. **Approximation Algorithms**: Extreme thresholds are computed using Spark SQL's `percentile_approx`, which uses an approximate Greenwald-Khanna streaming algorithm. The accuracy parameter is set to $10,000$ to ensure threshold precision within $\pm 0.1^\circ\text{C}$.
 4. **Data Imputation**: Filled values in `weather_clean` originate from linear interpolation of short gaps ($\le 3$ calendar days). They represent statistically robust estimates for time-series continuity, not physical sensor measurements.
+
+---
+
+## 8. Global Window Operation Note
+
+Global window functions without a `PARTITION BY` clause (used in `temp_location_ranking`, `rain_location_ranking`, `climate_city_profile`, `temp_trend`, and `extreme_top_events`) execute exclusively across small pre-aggregated datasets (under 1,000 rows, specifically 8 to 30 rows) to perform cross-station rankings and endpoint selections where single-partition collection is optimal and causes zero performance degradation.
+
+---
+
+## 9. Automated Natural Language Climate Insights Rules
+
+Natural language climate insights are synthesized deterministically from Spark SQL analytical outputs without any recomputation in Pandas or NumPy. The generation follows 10 strict meteorological rules:
+
+| Rule | Analytical Source | Trigger / Guard Condition | Meteorological & Wording Policy |
+|---|---|---|---|
+| **1. Thermal Extremes by Station** | `temp_location_ranking` | $\ge 2$ stations with valid thermal averages | Reports hottest and coldest stations by mean temperature. Single-station selections switch to singular wording ("The average temperature for {station}..."). |
+| **2. Precipitation Dominance** | `rain_location_ranking` | $\ge 1$ station with precipitation records | Identifies wettest station, annual volume equivalent, and primary wet calendar month. |
+| **3. Multi-Decadal Warming Rates** | `temp_trend` | Valid slope over $\ge 5$ complete years | Reports warming rates per decade ($^\circ\text{C}/\text{decade}$). Only trends meeting statistical significance ($p < 0.05$ / complete years) are highlighted. |
+| **4. Historical Temperature Records** | `kpi_summary` | Non-null `max_temp` and `min_temp` | Cites absolute historical record high and low temperatures with respective station locations and dates. |
+| **5. Extreme Deluges & IMD Events** | `rain_heavy_days` | Annual deluge counts $> 0$ | Cites frequency of heavy ($\ge 64.5\text{ mm}$) and very heavy ($\ge 115.6\text{ mm}$) rainfall days classified by Indian Meteorological Department standards. |
+| **6. Prolonged Heatwave Episodes** | `heatwave_spells` | $\ge 1$ identified heat spell ($\ge 3$ consecutive days) | Reports longest continuous heatwave event, peak temperature, and duration discovered via Spark SQL gaps-and-islands window grouping. |
+| **7. Monsoon Concentration** | `rain_seasonal` | Valid seasonal precipitation breakdown | Quantifies monsoon season share as a percentage of total annual precipitation volume. |
+| **8. Atmospheric Correlations** | `correlations` | Strongest non-identity $\|r\| \ge 0.50$ | Cites strongest Pearson correlation between meteorological variables (raw and anomaly modes). Strictly avoids causal phrasing ("because", "caused by"). |
+| **9. Baseline & Record Caveats** | `temp_yearly`, `rain_yearly` | Filtered span $< 5$ years or incomplete years present | Issues cautionary notice indicating insufficient baseline span for multi-decadal climatological normals, or notes incomplete year exclusion. |
+| **10. Data Cleansing & Interpolation** | `kpi_summary` | `interpolated_value_count` $> 0$ | Discloses the exact count of linearly interpolated daily values across short gaps ($\le 3$ calendar days) tracked by boolean flags. |
+
+### Language & Evidence Policies
+- **Clean Factual Observations**: No causal assertions ("because", "caused by") and no predictive speculation ("will ").
+- **Evidence Traceability**: Every numeric value rendered in insight text is explicitly recorded in its accompanying `evidence` dictionary.
+- **Trend-Line Drawing Geometry**: Trendlines displayed on scatter plots pass through the centroid $(\bar{x}, \bar{y})$ using the exact slope `regr_slope` computed by Spark SQL:
+  $$y = \bar{y} + \text{slope} \cdot (x - \bar{x})$$
+

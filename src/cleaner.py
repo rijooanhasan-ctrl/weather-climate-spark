@@ -301,8 +301,8 @@ def clean(
             df_step5.createOrReplaceTempView("clean_step_5")
         else:
             # Build window CTE ONLY for columns that actually have missing values
-            w_select = ["date", "location", "latitude", "longitude", "rainfall"]
-            for col in numeric_columns:
+            w_select = []
+            for col in standard_columns:
                 if col in cols_with_nulls:
                     w_select.append(f"`{col}`")
                     w_select.append(
@@ -317,11 +317,11 @@ def clean(
                     w_select.append(
                         f"first(CASE WHEN `{col}` IS NOT NULL THEN date END, true) OVER (PARTITION BY location ORDER BY date ROWS BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING) AS `_nd_{col}`"
                     )
-                elif col != "rainfall":
+                else:
                     w_select.append(f"`{col}`")
 
-            interp_select = ["date", "location", "latitude", "longitude"]
-            for col in numeric_columns:
+            interp_select = []
+            for col in standard_columns:
                 if col in cols_with_nulls:
                     interp_select.append(f"""
                     CASE
@@ -333,12 +333,10 @@ def clean(
                         THEN ROUND(`_pv_{col}` + (CAST(datediff(date, `_pd_{col}`) AS DOUBLE) / datediff(`_nd_{col}`, `_pd_{col}`)) * (`_nv_{col}` - `_pv_{col}`), 4)
                         ELSE `{col}`
                     END AS `{col}`""")
-                elif col == "rainfall":
-                    interp_select.append("`rainfall`")
                 else:
                     interp_select.append(f"`{col}`")
 
-            # Add was_filled flag columns
+            # Add was_filled flag columns for each column in FILL_COLUMNS
             for col in FILL_COLUMNS:
                 if col in cols_with_nulls:
                     interp_select.append(f"""

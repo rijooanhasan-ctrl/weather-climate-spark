@@ -134,6 +134,23 @@ PREVIEW_ROWS_MAX: int = 1000
 BUILTIN_DATASET_LABEL: str = "Built-in dataset: 8 Indian cities, 2010-2025"
 NO_COLUMN_LABEL: str = "(not in file)"
 
+# ── Phase 7 Dashboard & Chart Constants ───────────────────────────────────────
+PLOTLY_TEMPLATE: str = "plotly_dark"
+CHART_HEIGHT: int = 420
+CHART_HEIGHT_TALL: int = 560
+MAX_LOCATIONS_IN_CHART: int = 12
+DIVERGING_COLORSCALE: str = "RdBu_r"
+SEQUENTIAL_COLORSCALE: str = "Blues"
+SEASON_ORDER: list[str] = ["Winter", "Summer", "Monsoon", "Post-monsoon"]
+MONTH_NAMES: list[str] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+]
+INSIGHT_MIN_ABS_CORR: float = 0.5
+INSIGHT_ANOMALY_DIFF: float = 0.3
+INSIGHT_MAX_ITEMS: int = 12
+
+
 
 
 

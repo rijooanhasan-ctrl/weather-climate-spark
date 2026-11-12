@@ -1,0 +1,290 @@
+================================================================================
+WEATHER & CLIMATE SPARK SQL ANALYSIS ENGINE - FULL SCHEMA DUMP (22 ANALYSES)
+================================================================================
+
+KEY: temp_yearly
+TITLE: Yearly Temperature & Anomalies
+PARAMS: none
+COLUMNS COUNT: 11
+SCHEMA:
+  - location: string
+  - year: int
+  - avg_temp: double
+  - avg_temp_max: double
+  - avg_temp_min: double
+  - record_max: double
+  - record_min: double
+  - days_with_data: bigint
+  - is_complete_year: boolean
+  - anomaly_vs_location_mean: double
+  - yoy_change: double
+------------------------------------------------------------
+KEY: temp_monthly_climatology
+TITLE: Monthly Temperature Climatology
+PARAMS: none
+COLUMNS COUNT: 5
+SCHEMA:
+  - location: string
+  - month: int
+  - avg_temp: double
+  - avg_temp_max: double
+  - avg_temp_min: double
+------------------------------------------------------------
+KEY: temp_monthly_series
+TITLE: Monthly Temperature Series
+PARAMS: none
+COLUMNS COUNT: 5
+SCHEMA:
+  - location: string
+  - year: int
+  - month: int
+  - avg_temp: double
+  - rolling_12m_avg: double
+------------------------------------------------------------
+KEY: temp_location_ranking
+TITLE: Location Temperature Ranking
+PARAMS: none
+COLUMNS COUNT: 8
+SCHEMA:
+  - location: string
+  - avg_temp: double
+  - record_max: double
+  - record_max_date: string
+  - record_min: double
+  - record_min_date: string
+  - hottest_rank: int
+  - coldest_rank: int
+------------------------------------------------------------
+KEY: temp_trend
+TITLE: Temperature Trend Analysis
+PARAMS: none
+COLUMNS COUNT: 8
+SCHEMA:
+  - location: string
+  - slope_c_per_year: double
+  - slope_per_decade: double
+  - r_squared: double
+  - n_years: bigint
+  - first_year_avg: double
+  - last_year_avg: double
+  - trend_label: string
+------------------------------------------------------------
+KEY: temp_seasonal
+TITLE: Seasonal Temperature Analysis
+PARAMS: by_year=False
+COLUMNS COUNT: 5
+SCHEMA:
+  - location: string
+  - season: string
+  - avg_temp: double
+  - avg_temp_max: double
+  - avg_temp_min: double
+------------------------------------------------------------
+KEY: rain_monthly
+TITLE: Monthly Rainfall Totals
+PARAMS: none
+COLUMNS COUNT: 7
+SCHEMA:
+  - location: string
+  - year: int
+  - month: int
+  - total_rain: double
+  - rainy_days: bigint
+  - max_daily: double
+  - days_with_data: bigint
+------------------------------------------------------------
+KEY: rain_yearly
+TITLE: Yearly Rainfall & Rainy Days
+PARAMS: none
+COLUMNS COUNT: 8
+SCHEMA:
+  - location: string
+  - year: int
+  - total_rain: double
+  - rainy_days: bigint
+  - max_daily: double
+  - days_with_data: bigint
+  - is_complete_year: boolean
+  - yoy_change: double
+------------------------------------------------------------
+KEY: rain_monthly_climatology
+TITLE: Monthly Rainfall Climatology
+PARAMS: none
+COLUMNS COUNT: 3
+SCHEMA:
+  - location: string
+  - month: int
+  - avg_monthly_total: double
+------------------------------------------------------------
+KEY: rain_location_ranking
+TITLE: Location Rainfall Ranking
+PARAMS: none
+COLUMNS COUNT: 5
+SCHEMA:
+  - location: string
+  - avg_annual_rain: double
+  - wettest_month: int
+  - rank: int
+  - complete_years_used: bigint
+------------------------------------------------------------
+KEY: rain_seasonal
+TITLE: Seasonal Rainfall Distribution
+PARAMS: none
+COLUMNS COUNT: 4
+SCHEMA:
+  - location: string
+  - season: string
+  - avg_seasonal_total: double
+  - share_of_annual_pct: double
+------------------------------------------------------------
+KEY: rain_unusual_months
+TITLE: Unusual Rainfall Months (Z-Score)
+PARAMS: none
+COLUMNS COUNT: 8
+SCHEMA:
+  - location: string
+  - year: int
+  - month: int
+  - total_rain: double
+  - month_mean: double
+  - month_std: double
+  - z_score: double
+  - is_unusually_high: boolean
+------------------------------------------------------------
+KEY: rain_heavy_days
+TITLE: Heavy Rainfall Frequency & Records
+PARAMS: none
+COLUMNS COUNT: 6
+SCHEMA:
+  - location: string
+  - year: int
+  - heavy_rain_days: bigint
+  - very_heavy_rain_days: bigint
+  - extremely_heavy_rain_days: bigint
+  - total_heavy_days: bigint
+------------------------------------------------------------
+KEY: climate_year_profile
+TITLE: Annual Climate Profile
+PARAMS: none
+COLUMNS COUNT: 7
+SCHEMA:
+  - year: int
+  - avg_temp: double
+  - avg_rain_per_location: double
+  - avg_humidity: double
+  - avg_wind_speed: double
+  - avg_pressure: double
+  - days: bigint
+------------------------------------------------------------
+KEY: climate_year_comparison
+TITLE: Climate Comparison Between Years
+PARAMS: year_a=2015, year_b=2020
+COLUMNS COUNT: 5
+SCHEMA:
+  - metric: string
+  - value_a: double
+  - value_b: double
+  - difference: double
+  - pct_change: double
+------------------------------------------------------------
+KEY: climate_city_profile
+TITLE: Multi-City Climate Comparison
+PARAMS: none
+COLUMNS COUNT: 15
+SCHEMA:
+  - location: string
+  - avg_temp: double
+  - annual_rainfall_equiv: double
+  - avg_humidity: double
+  - avg_wind_speed: double
+  - avg_pressure: double
+  - rainy_days_per_year: decimal(7,1)
+  - record_max_temp: double
+  - record_min_temp: double
+  - record_rain: double
+  - temp_rank: int
+  - rain_rank: int
+  - humidity_rank: int
+  - wind_rank: int
+  - pressure_rank: int
+------------------------------------------------------------
+KEY: extreme_thresholds
+TITLE: Extreme Weather Thresholds
+PARAMS: none
+COLUMNS COUNT: 4
+SCHEMA:
+  - location: string
+  - hot_day_threshold: double
+  - cold_day_threshold: double
+  - wet_day_extreme_threshold: double
+------------------------------------------------------------
+KEY: extreme_events_yearly
+TITLE: Yearly Extreme Event Counts
+PARAMS: none
+COLUMNS COUNT: 6
+SCHEMA:
+  - location: string
+  - year: int
+  - hot_days: bigint
+  - cold_days: bigint
+  - extreme_rain_days: bigint
+  - heavy_rain_days: bigint
+------------------------------------------------------------
+KEY: extreme_top_events
+TITLE: Top Extreme Weather Events
+PARAMS: n=10
+COLUMNS COUNT: 5
+SCHEMA:
+  - category: string
+  - rank: int
+  - location: string
+  - date: string
+  - value: double
+------------------------------------------------------------
+KEY: heatwave_spells
+TITLE: Heatwave Spells (Gaps-and-Islands)
+PARAMS: none
+COLUMNS COUNT: 5
+SCHEMA:
+  - location: string
+  - spell_start: string
+  - spell_end: string
+  - length_days: bigint
+  - peak_temp_max: double
+------------------------------------------------------------
+KEY: correlations
+TITLE: Climate Variable Correlations
+PARAMS: mode=raw, scope=all
+COLUMNS COUNT: 5
+SCHEMA:
+  - location: string
+  - var_x: string
+  - var_y: string
+  - r: double
+  - n_pairs: bigint
+------------------------------------------------------------
+KEY: kpi_summary
+TITLE: Executive Climate KPIs
+PARAMS: none
+COLUMNS COUNT: 19
+SCHEMA:
+  - total_records: bigint
+  - locations: bigint
+  - first_date: string
+  - last_date: string
+  - avg_temp: double
+  - max_temp: double
+  - max_temp_date: string
+  - max_temp_location: string
+  - min_temp: double
+  - min_temp_date: string
+  - min_temp_location: string
+  - total_rainfall_mm: double
+  - avg_annual_rainfall_per_location: double
+  - avg_humidity: double
+  - avg_wind_speed: double
+  - avg_pressure: double
+  - wettest_year: int
+  - hottest_year: int
+  - interpolated_value_count: bigint
+------------------------------------------------------------

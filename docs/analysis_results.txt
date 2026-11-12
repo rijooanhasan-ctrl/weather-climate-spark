@@ -6,7 +6,7 @@ Filter Start : None (All)
 Filter End   : None (All)
 Locations    : All
 --------------------------------------------------------------------------------
-Dataset prepared and cached in 26.58 s (46,752 raw rows -> 46,752 clean rows in view 'weather_clean')
+Dataset prepared and cached in 23.43 s (46,752 raw rows -> 46,752 clean rows in view 'weather_clean')
 
 ================================================================================
 [1/22] [TEMPERATURE] Yearly Temperature & Anomalies (key: temp_yearly)
@@ -84,7 +84,7 @@ Preview (first 10 rows of 128):
 +---------+----+--------+------------+------------+----------+----------+--------------+----------------+------------------------+----------+
 only showing top 10 rows
 
-Rows returned: 128 | Execution time: 0.507 s
+Rows returned: 128 | Execution time: 0.549 s
 
 ================================================================================
 [2/22] [TEMPERATURE] Monthly Temperature Climatology (key: temp_monthly_climatology)
@@ -123,7 +123,7 @@ Preview (first 10 rows of 96):
 +---------+-----+--------+------------+------------+
 only showing top 10 rows
 
-Rows returned: 96 | Execution time: 0.369 s
+Rows returned: 96 | Execution time: 0.247 s
 
 ================================================================================
 [3/22] [TEMPERATURE] Monthly Temperature Series (key: temp_monthly_series)
@@ -179,7 +179,7 @@ Preview (first 10 rows of 1,536):
 +---------+----+-----+--------+---------------+
 only showing top 10 rows
 
-Rows returned: 1,536 | Execution time: 0.503 s
+Rows returned: 1,536 | Execution time: 0.348 s
 
 ================================================================================
 [4/22] [TEMPERATURE] Location Temperature Ranking (key: temp_location_ranking)
@@ -236,7 +236,7 @@ Preview (first 10 rows of 8):
 |Shillong |17.43   |30.4      |2023-04-18     |0.5       |2023-01-19     |8           |1           |
 +---------+--------+----------+---------------+----------+---------------+------------+------------+
 
-Rows returned: 8 | Execution time: 1.260 s
+Rows returned: 8 | Execution time: 0.918 s
 
 ================================================================================
 [5/22] [TEMPERATURE] Temperature Trend Analysis (key: temp_trend)
@@ -394,7 +394,7 @@ Preview (first 10 rows of 9):
 |All locations|0.01            |0.0999          |0.0382   |16     |25.0          |25.02        |no clear trend|
 +-------------+----------------+----------------+---------+-------+--------------+-------------+--------------+
 
-Rows returned: 9 | Execution time: 1.238 s
+Rows returned: 9 | Execution time: 1.023 s
 
 ================================================================================
 [6/22] [TEMPERATURE] Seasonal Temperature Analysis (key: temp_seasonal)
@@ -433,7 +433,7 @@ Preview (first 10 rows of 32):
 +---------+------------+--------+------------+------------+
 only showing top 10 rows
 
-Rows returned: 32 | Execution time: 0.318 s
+Rows returned: 32 | Execution time: 0.319 s
 
 ================================================================================
 [7/22] [RAINFALL] Monthly Rainfall Totals (key: rain_monthly)
@@ -474,7 +474,7 @@ Preview (first 10 rows of 1,536):
 +---------+----+-----+----------+----------+---------+--------------+
 only showing top 10 rows
 
-Rows returned: 1,536 | Execution time: 0.338 s
+Rows returned: 1,536 | Execution time: 0.313 s
 
 ================================================================================
 [8/22] [RAINFALL] Yearly Rainfall & Rainy Days (key: rain_yearly)
@@ -532,7 +532,7 @@ Preview (first 10 rows of 128):
 +---------+----+----------+----------+---------+--------------+----------------+----------+
 only showing top 10 rows
 
-Rows returned: 128 | Execution time: 0.325 s
+Rows returned: 128 | Execution time: 0.276 s
 
 ================================================================================
 [9/22] [RAINFALL] Monthly Rainfall Climatology (key: rain_monthly_climatology)
@@ -578,7 +578,7 @@ Preview (first 10 rows of 96):
 +---------+-----+-----------------+
 only showing top 10 rows
 
-Rows returned: 96 | Execution time: 0.287 s
+Rows returned: 96 | Execution time: 0.179 s
 
 ================================================================================
 [10/22] [RAINFALL] Location Rainfall Ranking (key: rain_location_ranking)
@@ -654,7 +654,7 @@ Preview (first 10 rows of 8):
 |Jaipur   |633.89         |8            |8   |16                 |
 +---------+---------------+-------------+----+-------------------+
 
-Rows returned: 8 | Execution time: 0.641 s
+Rows returned: 8 | Execution time: 0.569 s
 
 ================================================================================
 [11/22] [RAINFALL] Seasonal Rainfall Distribution (key: rain_seasonal)
@@ -732,7 +732,7 @@ Preview (first 10 rows of 32):
 +---------+------------+------------------+-------------------+
 only showing top 10 rows
 
-Rows returned: 32 | Execution time: 0.677 s
+Rows returned: 32 | Execution time: 0.629 s
 
 ================================================================================
 [12/22] [RAINFALL] Unusual Rainfall Months (Z-Score) (key: rain_unusual_months)
@@ -801,7 +801,7 @@ Preview (first 10 rows of 1,536):
 +---------+----+-----+----------+----------+---------+-------+-----------------+
 only showing top 10 rows
 
-Rows returned: 1,536 | Execution time: 0.510 s
+Rows returned: 1,536 | Execution time: 0.559 s
 
 ================================================================================
 [13/22] [RAINFALL] Heavy Rainfall Frequency & Records (key: rain_heavy_days)
@@ -841,7 +841,7 @@ Preview (first 10 rows of 128):
 +---------+----+---------------+--------------------+-------------------------+----------------+
 only showing top 10 rows
 
-Rows returned: 128 | Execution time: 0.320 s
+Rows returned: 128 | Execution time: 0.247 s
 
 ================================================================================
 [14/22] [CLIMATE] Annual Climate Profile (key: climate_year_profile)
@@ -882,7 +882,7 @@ Preview (first 10 rows of 16):
 +----+--------+---------------------+------------+--------------+------------+----+
 only showing top 10 rows
 
-Rows returned: 16 | Execution time: 0.289 s
+Rows returned: 16 | Execution time: 0.257 s
 
 ================================================================================
 [15/22] [CLIMATE] Climate Comparison Between Years (key: climate_year_comparison)
@@ -994,7 +994,7 @@ Preview (first 10 rows of 8):
 |Average Surface Pressure (hPa)  |1010.17|1009.5 |-0.68     |-0.07     |
 +--------------------------------+-------+-------+----------+----------+
 
-Rows returned: 8 | Execution time: 1.006 s
+Rows returned: 8 | Execution time: 0.809 s
 
 ================================================================================
 [16/22] [CLIMATE] Multi-City Climate Comparison (key: climate_city_profile)
@@ -1054,7 +1054,7 @@ Preview (first 10 rows of 8):
 |Shillong |17.43   |2507.07              |80.22       |6.16          |1011.77     |167.4              |30.4           |0.5            |210.4      |8        |1        |1            |8        |1            |
 +---------+--------+---------------------+------------+--------------+------------+-------------------+---------------+---------------+-----------+---------+---------+-------------+---------+-------------+
 
-Rows returned: 8 | Execution time: 0.300 s
+Rows returned: 8 | Execution time: 0.260 s
 
 ================================================================================
 [17/22] [CLIMATE] Extreme Weather Thresholds (key: extreme_thresholds)
@@ -1084,7 +1084,7 @@ Preview (first 10 rows of 8):
 |Shillong |25.7             |5.8               |48.7                     |
 +---------+-----------------+------------------+-------------------------+
 
-Rows returned: 8 | Execution time: 0.231 s
+Rows returned: 8 | Execution time: 0.201 s
 
 ================================================================================
 [18/22] [CLIMATE] Yearly Extreme Event Counts (key: extreme_events_yearly)
@@ -1134,7 +1134,7 @@ Preview (first 10 rows of 128):
 +---------+----+--------+---------+-----------------+---------------+
 only showing top 10 rows
 
-Rows returned: 128 | Execution time: 0.617 s
+Rows returned: 128 | Execution time: 0.582 s
 
 ================================================================================
 [19/22] [CLIMATE] Top Extreme Weather Events (key: extreme_top_events)
@@ -1204,7 +1204,7 @@ Preview (first 10 rows of 30):
 +-----------+----+--------+----------+-----+
 only showing top 10 rows
 
-Rows returned: 30 | Execution time: 0.528 s
+Rows returned: 30 | Execution time: 0.478 s
 
 ================================================================================
 [20/22] [CLIMATE] Heatwave Spells (Gaps-and-Islands) (key: heatwave_spells)
@@ -1270,7 +1270,7 @@ Preview (first 10 rows of 281):
 +---------+-----------+----------+-----------+-------------+
 only showing top 10 rows
 
-Rows returned: 281 | Execution time: 0.651 s
+Rows returned: 281 | Execution time: 0.629 s
 
 ================================================================================
 [21/22] [CLIMATE] Climate Variable Correlations (key: correlations)
@@ -1383,7 +1383,7 @@ Preview (first 10 rows of 10):
 |All     |wind_speed |pressure  |-0.34084904910636515 |46752  |
 +--------+-----------+----------+---------------------+-------+
 
-Rows returned: 10 | Execution time: 0.957 s
+Rows returned: 10 | Execution time: 0.932 s
 
 ================================================================================
 [22/22] [KPIS] Executive Climate KPIs (key: kpi_summary)
@@ -1491,8 +1491,8 @@ Preview (first 10 rows of 1):
 |46752        |8        |2010-01-01|2025-12-31|24.6    |46.6    |2024-05-27   |Jaipur           |0.5     |2023-01-19   |Shillong         |174900.5         |1366.41                         |68.94       |10.02         |1009.34     |2010        |2025        |0                       |
 +-------------+---------+----------+----------+--------+--------+-------------+-----------------+--------+-------------+-----------------+-----------------+--------------------------------+------------+--------------+------------+------------+------------+------------------------+
 
-Rows returned: 1 | Execution time: 0.902 s
+Rows returned: 1 | Execution time: 0.794 s
 
 ================================================================================
-ALL QUERIES COMPLETED: 22 analysis executed in 29.68 s
+ALL QUERIES COMPLETED: 22 analysis executed in 25.87 s
 ================================================================================

@@ -23,11 +23,16 @@ import pytest
 
 from config.schema import STANDARD_COLUMNS
 import config.settings as settings
+from src.dashboard.catalog import ANALYSIS_UI_MAP
+from src.dashboard.insights import Insight
 from src.dashboard.services import (
     ActiveDatasetStore,
+    AnalysisFrame,
     UploadInspection,
     build_filters,
+    get_analysis_frame,
     get_filter_options,
+    get_insights,
     get_kpis,
     get_preview,
     inspect_upload,
@@ -433,3 +438,63 @@ def test_settings_matches_streamlit_toml():
     assert toml_max_upload == settings.MAX_UPLOAD_MB, (
         f"Mismatch: config.toml ({toml_max_upload}) != settings.MAX_UPLOAD_MB ({settings.MAX_UPLOAD_MB})"
     )
+
+
+# -----------------------------------------------------------------------------
+# Test 14: get_analysis_frame returns non-empty result for all mapped keys
+# -----------------------------------------------------------------------------
+def test_get_analysis_frame_all_mapped_keys(spark):
+    """
+    Test 14: get_analysis_frame returns a non-empty DataFrame and no error for every
+    registered analysis query mapped in ANALYSIS_UI_MAP on the built-in dataset.
+    """
+    load_builtin(spark)
+    for key in ANALYSIS_UI_MAP.keys():
+        frame = get_analysis_frame(spark, key=key, view=settings.CLEAN_VIEW_NAME)
+        assert isinstance(frame, AnalysisFrame), f"Expected AnalysisFrame for key '{key}'"
+        assert frame.error is None, f"Analysis '{key}' failed with error: {frame.error}"
+        assert not frame.df.empty, f"Analysis '{key}' returned empty DataFrame"
+        assert len(frame.sql) > 0, f"Analysis '{key}' missing recorded SQL"
+
+
+# -----------------------------------------------------------------------------
+# Test 15: get_analysis_frame row limit guard
+# -----------------------------------------------------------------------------
+def test_get_analysis_frame_row_limit_guard(spark, monkeypatch):
+    """
+    Test 15: get_analysis_frame with monkeypatched ANALYSIS_RESULT_MAX_ROWS returns a
+    friendly error string, empty DataFrame, and raises no unhandled exception.
+    """
+    load_builtin(spark)
+    monkeypatch.setattr(settings, "ANALYSIS_RESULT_MAX_ROWS", 5)
+
+    # temp_yearly produces 128 rows on the built-in dataset (> 5)
+    frame = get_analysis_frame(spark, key="temp_yearly", view=settings.CLEAN_VIEW_NAME)
+    assert isinstance(frame, AnalysisFrame)
+    assert frame.error is not None
+    assert "limit" in frame.error.lower() or "rows" in frame.error.lower()
+    assert frame.df.empty
+
+
+# -----------------------------------------------------------------------------
+# Test 16: get_insights returns structured insights on built-in data
+# -----------------------------------------------------------------------------
+def test_get_insights_builtin_dataset(spark):
+    """
+    Test 16: get_insights returns a populated list of Insight instances on built-in data.
+    Every insight must have a category, non-empty text, and evidence dictionary.
+    """
+    load_builtin(spark)
+    insights = get_insights(spark, view=settings.CLEAN_VIEW_NAME)
+    assert isinstance(insights, list)
+    assert len(insights) >= 5, f"Expected at least 5 insights, got {len(insights)}"
+
+    for ins in insights:
+        assert isinstance(ins, Insight)
+        assert len(ins.text) > 0
+        assert ins.category in {"temperature", "rainfall", "extremes", "relationships", "data quality"}
+        assert ins.level in {"info", "caution"}
+        assert len(ins.source_keys) > 0
+        assert isinstance(ins.evidence, dict)
+        assert len(ins.evidence) > 0
+

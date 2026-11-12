@@ -46,6 +46,8 @@ from src.data_loader import DatasetLoadError, LoadResult, load_dataset, read_csv
 from src.pipeline import PipelineError, PreparedData, prepare
 from src.queries.base import Filters, QueryResult, build_where
 from src.queries.kpis import kpi_summary
+from src.queries.registry import ANALYSES_BY_KEY, get_analysis
+from src.dashboard.insights import Insight, generate_insights
 from src.sql_utils import quote_identifier
 from src.upload import UploadError, save_uploaded_file
 from src.validator import ValidationReport
@@ -571,3 +573,123 @@ def summarize_cleaning(report: CleaningReport) -> dict[str, Any]:
         "warnings": report.warnings,
         "steps": report.steps,
     }
+
+
+# =============================================================================
+# 7. Analysis Query Service & Natural Language Insights
+# =============================================================================
+
+@dataclass
+class AnalysisFrame:
+    """Structure encapsulating executed analysis query data, SQL, and error state."""
+    key: str
+    title: str
+    df: pd.DataFrame
+    sql: str
+    parameters: dict[str, Any]
+    error: str | None = None
+
+
+def get_analysis_frame(
+    spark: SparkSession,
+    key: str,
+    filters: Filters | None = None,
+    params: dict[str, Any] | None = None,
+    view: str = CLEAN_VIEW_NAME,
+) -> AnalysisFrame:
+    """
+    Execute a registered analysis query, convert result to a pandas DataFrame,
+    and return an AnalysisFrame structure.
+
+    Catches row-limit safety exceptions and filter validation errors, returning
+    an empty DataFrame and a human-friendly error message.
+    """
+    try:
+        item = get_analysis(key)
+    except ValueError as ve:
+        return AnalysisFrame(
+            key=key,
+            title=key,
+            df=pd.DataFrame(),
+            sql="",
+            parameters={},
+            error=str(ve),
+        )
+
+    title = item.get("title", key)
+    fn = item["function"]
+    kw = dict(params or {})
+
+    try:
+        res: QueryResult = fn(spark, filters=filters, view=view, **kw)
+        df = res.to_pandas()
+        return AnalysisFrame(
+            key=key,
+            title=title,
+            df=df,
+            sql=res.sql,
+            parameters=res.parameters,
+            error=None,
+        )
+    except ValueError as ve:
+        # Row limit exceeded or filter range invalid
+        return AnalysisFrame(
+            key=key,
+            title=title,
+            df=pd.DataFrame(),
+            sql="",
+            parameters=kw,
+            error=str(ve),
+        )
+    except Exception as exc:
+        return AnalysisFrame(
+            key=key,
+            title=title,
+            df=pd.DataFrame(),
+            sql="",
+            parameters=kw,
+            error=f"Error executing analysis '{key}': {exc}",
+        )
+
+
+def get_insights(
+    spark: SparkSession,
+    filters: Filters | None = None,
+    view: str = CLEAN_VIEW_NAME,
+) -> list[Insight]:
+    """
+    Synthesize natural language climate insights across multiple analysis queries.
+    """
+    kpis = get_kpis(spark, filters=filters, view=view)
+    if kpis.get("total_records", 0) == 0:
+        return []
+
+    needed_keys = [
+        "temp_location_ranking",
+        "temp_trend",
+        "rain_location_ranking",
+        "rain_seasonal",
+        "rain_unusual_months",
+        "extreme_events_yearly",
+        "heatwave_spells",
+        "correlations",
+        "rain_yearly",
+        "temp_yearly",
+    ]
+
+    frames: dict[str, pd.DataFrame] = {}
+    for key in needed_keys:
+        frame = get_analysis_frame(spark, key, filters=filters, view=view)
+        if frame.error is None and not frame.df.empty:
+            frames[key] = frame.df
+
+    # Also fetch anomaly correlations to check seasonal cycle divergence
+    anom_corr_frame = get_analysis_frame(
+        spark, "correlations", filters=filters, params={"mode": "anomaly"}, view=view
+    )
+    corr_anomaly_df = (
+        anom_corr_frame.df if anom_corr_frame.error is None and not anom_corr_frame.df.empty else None
+    )
+
+    return generate_insights(frames, kpis, corr_anomaly_df=corr_anomaly_df)
+

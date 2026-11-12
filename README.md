@@ -284,18 +284,34 @@ streamlit run app.py
   - **Upload & Column Mapping**: Upload custom daily weather CSVs (up to 200 MB), inspect detected delimiters and headers, map source fields to the 11 standard columns with collision prevention, and optionally provide fallback location names.
   - **Filters**: Multi-select stations, select bounded date ranges, filter specific years, and filter meteorological seasons. Empty location selections render informative warnings without error.
 * **Top Metric Strip**: Displays the active dataset label, origin source (`BUILTIN` or `UPLOAD`), raw row count, clean row count, and count of linearly interpolated values.
-* **Dashboard Tabs**:
-  1. **Overview**: Executive scorecard with 10 headline KPI metric cards across two rows (records, stations, temperature averages and extremes with date/city captions, total rainfall, humidity, wind, pressure, and interpolated value counts). Includes an expander displaying the exact Spark SQL query and parameters.
-  2. **Data Quality**: Structural validation status, error/warning lists, full column statistical profiles (min, max, null rates, units), and location record coverage.
-  3. **Cleaning Report**: Step-by-step cleaning audit table showing rows before/after and values modified, pipeline warnings, and dataset immutability guarantee notice.
-  4. **Data Preview**: Dynamic preview table showing clean records ordered by `location, date` with user-configurable row counts (up to 1,000 rows).
-  5. **Spark SQL Log & Explain**: Expanders displaying every SQL query executed across ingestion, cleaning, and analysis, with an interactive button to inspect Spark Catalyst physical execution plans (`explain()`).
-  6. **Analyses (Phase 7 Preview)**: Catalogue of all 22 analytical pattern discovery queries wired into the Spark SQL engine.
+* **Section-Based Navigation (Performance Design)**:
+  - The dashboard uses horizontal `st.radio("Select View", options=SECTIONS, horizontal=True)` instead of `st.tabs`.
+  - *Rationale*: Streamlit evaluates all tabs on every rerun unless guarded, which would trigger all 22 analytical Spark SQL queries on every filter update. Horizontal radio ensures that only the active view executes, keeping UI reruns fast and snappy.
+* **Charts and Insights Architecture**:
+  - **Interactive Plotly Visualizations**: Every analysis is rendered with dark slate styling matching `#1E293B`, responsive container width, and stable station colors across filter changes.
+  - **Plotly Modebar Camera Icon**: One can capture presentation-ready PNG screenshots of any visualization by clicking the camera icon in the top-right corner of the Plotly chart toolbar.
+  - **Spark SQL Inspection & Plan Explains**: Every chart container includes an expander with the exact Spark SQL query and parameters. The Spark SQL section provides physical Catalyst execution plans (`explain()`) for all 22 queries.
+  - **Data Export**: Every analysis contains an interactive raw data table and a one-click CSV download button (`📥 Download {key}.csv`).
+  - **Automated Meteorological Insights**: Deterministic, evidence-backed findings generated directly from Spark SQL metrics following 10 strict rules (clean language, no causal speculation, and numbers mirrored in evidence dictionaries).
+
+### Section to Analysis Query Mapping
+
+| Dashboard Section | Visualizations & Components | Spark SQL Query Keys |
+|---|---|---|
+| **Overview** | 10 Headline KPI metric cards, Key Findings insight cards, 4 headline visualizations | `kpi_summary`, `temp_yearly`, `rain_yearly`, `climate_city_profile`, `temp_trend` |
+| **Temperature** | Annual anomalies bar chart, 12-month climatology cycle, station chronological series with 12m baseline, thermal ranking with extremes, least-squares warming trend, seasonal distribution | `temp_yearly`, `temp_monthly_climatology`, `temp_monthly_series`, `temp_location_ranking`, `temp_trend`, `temp_seasonal` |
+| **Rainfall** | Annual precipitation with flagged incomplete years, year-month rainfall heatmap, monthly climatology, station volume ranking, seasonal monsoon breakdown, standardized anomaly (Z-Score $\ge 2.0$), IMD heavy deluge frequency | `rain_yearly`, `rain_monthly`, `rain_monthly_climatology`, `rain_location_ranking`, `rain_seasonal`, `rain_unusual_months`, `rain_heavy_days` |
+| **Climate patterns** | Annual multi-variable atmospheric profile, benchmark year comparison (Year A vs B), multi-metric station ranking radar/bar, station 95th/5th percentile extreme thresholds, yearly extreme event counts, top extreme event leaderboard, heatwave spells (gaps-and-islands $\ge 3$ days), Pearson correlations (raw and anomaly modes) | `climate_year_profile`, `climate_year_comparison`, `climate_city_profile`, `extreme_thresholds`, `extreme_events_yearly`, `extreme_top_events`, `heatwave_spells`, `correlations` |
+| **Data quality** | Validation status, critical error/warning callouts, defect metric scorecard, column completeness and statistical range table | Validation report (`load_result.validation`) |
+| **Cleaning report** | Raw-to-clean row counts, step-by-step transformation metrics, row removal deltas, interpolation counts, individual cleaning SQL logs | Cleaning report (`cleaning_report`) |
+| **Data preview** | Interactive clean dataset preview with user-configurable row limit (10 to 1,000 rows) and preview SQL query | `get_preview` on `weather_clean` |
+| **Spark SQL** | Query selector across all 22 analyses, formatted SQL query display, and Catalyst optimizer physical execution plan generator (`explain(extended=True)`) | `get_analysis_frame`, Catalyst `queryExecution` |
+
 * **Architecture & Memory Governance**:
   - `src/dashboard/services.py` contains zero `streamlit` imports, ensuring 100% independent unit testability.
   - `ActiveDatasetStore` manages the active session view. When switching datasets, it explicitly uncaches the old table (`spark.catalog.uncacheTable`) so the server never serves stale data.
   - **Single Active Dataset Limitation**: Because Spark temporary views are session-wide, the local application instance maintains one active dataset view at a time.
-  - All cached UI queries (`st.cache_data`) are keyed by `(store.version, hashable_filters, n)` and operate strictly on plain Python/Pandas structures without caching Spark DataFrames.
+  - All cached UI queries (`st.cache_data`) are keyed by dataset version and hashable parameters, operating strictly on plain Python/Pandas structures without caching Spark DataFrames.
 * **Known Acceptance Reference Values (Quick Correctness Check)**:
   - *All Data (No Filters)*: 46,752 records, avg temperature 24.6 °C, max temperature 46.6 °C at Jaipur on 2024-05-27, total rainfall 174,900.5 mm.
   - *Filtered (Mumbai, 2020-01-01 to 2022-12-31)*: 1,096 records, total rainfall 7,706.1 mm.
@@ -336,7 +352,7 @@ Based on rigorous diagnostic testing in the Windows + Python 3.13 + PySpark 3.5.
 | 4 | Cleaning pipeline & Phase 3 evidence audit | ✅ Complete |
 | 5 | Spark SQL pattern discovery & analysis queries | ✅ Complete |
 | 6 | Streamlit dashboard foundation, column mapping & KPI scorecard | ✅ Complete |
-| 7 | Interactive Plotly charts & auto-generated text insights | 🔜 Planned |
+| 7 | Interactive Plotly charts & auto-generated text insights | ✅ Complete |
 
 ---
 

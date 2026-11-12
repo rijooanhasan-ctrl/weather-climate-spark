@@ -340,8 +340,13 @@ def extreme_top_events(
             CAST(date AS STRING) AS date,
             temp_max AS value,
             ROW_NUMBER() OVER (ORDER BY temp_max DESC, date ASC) AS rank
-        FROM base
-        WHERE temp_max IS NOT NULL
+        FROM (
+            SELECT location, date, temp_max
+            FROM base
+            WHERE temp_max IS NOT NULL
+            ORDER BY temp_max DESC, date ASC
+            LIMIT {n}
+        )
     ),
     coldest AS (
         SELECT
@@ -350,8 +355,13 @@ def extreme_top_events(
             CAST(date AS STRING) AS date,
             temp_min AS value,
             ROW_NUMBER() OVER (ORDER BY temp_min ASC, date ASC) AS rank
-        FROM base
-        WHERE temp_min IS NOT NULL
+        FROM (
+            SELECT location, date, temp_min
+            FROM base
+            WHERE temp_min IS NOT NULL
+            ORDER BY temp_min ASC, date ASC
+            LIMIT {n}
+        )
     ),
     wettest AS (
         SELECT
@@ -360,8 +370,13 @@ def extreme_top_events(
             CAST(date AS STRING) AS date,
             rainfall AS value,
             ROW_NUMBER() OVER (ORDER BY rainfall DESC, date ASC) AS rank
-        FROM base
-        WHERE rainfall IS NOT NULL
+        FROM (
+            SELECT location, date, rainfall
+            FROM base
+            WHERE rainfall IS NOT NULL
+            ORDER BY rainfall DESC, date ASC
+            LIMIT {n}
+        )
     ),
     unioned AS (
         SELECT category, rank, location, date, ROUND(value, 2) AS value FROM hottest WHERE rank <= {n}
