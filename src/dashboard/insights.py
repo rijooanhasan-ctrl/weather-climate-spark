@@ -509,7 +509,10 @@ def generate_insights(
                     ),
                     level="caution",
                     source_keys=["rain_yearly", "temp_yearly"],
-                    evidence={"incomplete_years_present": True},
+                    evidence={
+                        "incomplete_years_present": True,
+                        "min_complete_year_coverage_pct": 95,
+                    },
                 )
             )
 

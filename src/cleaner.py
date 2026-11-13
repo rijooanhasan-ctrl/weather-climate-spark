@@ -208,8 +208,12 @@ def clean(
     df_step3 = spark.sql(step3_sql)
     df_step3.createOrReplaceTempView("clean_step_3")
 
-    rows_after_3 = int(spark.sql("SELECT COUNT(*) AS n FROM clean_step_3").collect()[0]["n"])
-    removed_3 = current_rows - rows_after_3
+    if drop_out_of_range and "temperature" in PLAUSIBLE_RANGES:
+        rows_after_3 = int(spark.sql("SELECT COUNT(*) AS n FROM clean_step_3").collect()[0]["n"])
+        removed_3 = current_rows - rows_after_3
+    else:
+        rows_after_3 = current_rows
+        removed_3 = 0
 
     report.steps.append({
         "step": 3,
@@ -259,7 +263,7 @@ def clean(
     df_step4 = spark.sql(step4_sql)
     df_step4.createOrReplaceTempView("clean_step_4")
 
-    rows_after_4 = int(spark.sql("SELECT COUNT(*) AS n FROM clean_step_4").collect()[0]["n"])
+    rows_after_4 = current_rows - surplus_rows
 
     report.steps.append({
         "step": 4,
@@ -422,10 +426,14 @@ def clean(
     ORDER BY location, date
     """
     df_clean = spark.sql(step6_sql)
-    df_clean.cache()
     df_clean.createOrReplaceTempView(view_name)
+    try:
+        if not spark.catalog.isCached(view_name):
+            spark.catalog.cacheTable(view_name)
+    except Exception:
+        pass
 
-    clean_rows = int(spark.sql(f"SELECT COUNT(*) AS n FROM {view_name}").collect()[0]["n"])
+    clean_rows = current_rows
 
     report.steps.append({
         "step": 6,
@@ -503,5 +511,15 @@ def clean(
         "location_row_counts": location_row_counts,
         "low_quality_locations": low_quality_locations,
     }
+
+    # Clean up intermediate step views from the catalog
+    for step_v in ["clean_step_1", "clean_step_2", "clean_step_3", "clean_step_4", "clean_step_5"]:
+        try:
+            if spark.catalog.tableExists(step_v):
+                if spark.catalog.isCached(step_v):
+                    spark.catalog.uncacheTable(step_v)
+                spark.catalog.dropTempView(step_v)
+        except Exception:
+            pass
 
     return df_clean, report

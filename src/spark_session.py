@@ -26,9 +26,9 @@ from pathlib import Path
 
 from pyspark.sql import SparkSession
 
-# Import the application name from the central settings file.
+# Import the application name and optimization settings from the central settings file.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from config.settings import APP_NAME  # noqa: E402
+from config.settings import APP_NAME, SPARK_CONF  # noqa: E402
 
 # ── Critical on Windows ───────────────────────────────────────────────────────
 # When Spark's JVM spawns Python worker sub-processes it runs the bare `python`
@@ -258,7 +258,7 @@ def get_spark_session(app_name: str = APP_NAME) -> SparkSession:
             raise RuntimeError(err_msg)
 
     try:
-        spark = (
+        builder = (
             SparkSession.builder
             # Run entirely on the local machine, using all CPU cores.
             .master("local[*]")
@@ -272,8 +272,11 @@ def get_spark_session(app_name: str = APP_NAME) -> SparkSession:
             .config("spark.ui.enabled", "false")
             # Optimize partition count for local multi-core analytical workloads.
             .config("spark.sql.shuffle.partitions", "8")
-            .getOrCreate()
         )
+        for conf_k, conf_v in SPARK_CONF.items():
+            builder = builder.config(conf_k, conf_v)
+
+        spark = builder.getOrCreate()
 
         # Set Spark's internal logger to WARN (separate from Python's logging).
         spark.sparkContext.setLogLevel("WARN")

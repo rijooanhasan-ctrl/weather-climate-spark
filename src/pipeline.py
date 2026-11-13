@@ -7,13 +7,14 @@ weather datasets for analytical querying and dashboard consumption.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from pyspark.sql import SparkSession
 
-from config.settings import CLEAN_VIEW_NAME, PRIMARY_DATASET_PATH
+from config.settings import CLEAN_VIEW_NAME, PRIMARY_DATASET_PATH, RAW_VIEW_NAME, STANDARDIZED_VIEW_NAME
 from src.cleaner import CleaningReport, clean
 from src.data_loader import LoadResult, load_dataset
 
@@ -43,6 +44,7 @@ def prepare(
     default_location: str | None = None,
     clean_options: dict[str, Any] | None = None,
     view_name: str = CLEAN_VIEW_NAME,
+    progress: Callable[[str, int, int], None] | None = None,
 ) -> PreparedData:
     """
     Load, standardize, validate, clean, and cache a weather dataset.
@@ -63,6 +65,8 @@ def prepare(
         Cleaning pipeline option overrides (e.g. fill_gaps, drop_out_of_range).
     view_name : str, default CLEAN_VIEW_NAME
         Name of the clean temporary view to register and cache.
+    progress : Callable[[str, int, int], None], optional
+        Optional callback reporting (step_name, current_step_index, total_steps).
 
     Returns
     -------
@@ -74,6 +78,12 @@ def prepare(
     PipelineError
         If dataset validation contains errors.
     """
+    if progress:
+        progress("Inspect CSV header and schema", 1, 5)
+
+    if progress:
+        progress("Load raw dataset into Spark", 2, 5)
+
     load_result = load_dataset(
         spark=spark,
         path=path,
@@ -82,12 +92,18 @@ def prepare(
         default_location=default_location,
     )
 
+    if progress:
+        progress("Standardize schema and validate data quality", 3, 5)
+
     if not load_result.validation.is_valid:
         error_lines = "\n  - ".join(load_result.validation.errors)
         raise PipelineError(
             f"Dataset validation failed with {len(load_result.validation.errors)} error(s):\n  - {error_lines}",
             errors=load_result.validation.errors,
         )
+
+    if progress:
+        progress("Clean data and interpolate short gaps", 4, 5)
 
     _, cleaning_report = clean(
         spark=spark,
@@ -96,8 +112,25 @@ def prepare(
         options=clean_options,
     )
 
+    if progress:
+        progress("Cache clean dataset in Spark catalog", 5, 5)
+
     # Cache clean table in Spark catalog for fast interactive querying
-    spark.catalog.cacheTable(view_name)
+    try:
+        if not spark.catalog.isCached(view_name):
+            spark.catalog.cacheTable(view_name)
+    except Exception:
+        pass
+
+    # Uncache and clean up intermediate raw and standardized views from memory
+    for v in [RAW_VIEW_NAME, STANDARDIZED_VIEW_NAME]:
+        try:
+            if spark.catalog.tableExists(v):
+                if spark.catalog.isCached(v):
+                    spark.catalog.uncacheTable(v)
+                spark.catalog.dropTempView(v)
+        except Exception:
+            pass
 
     return PreparedData(
         load_result=load_result,

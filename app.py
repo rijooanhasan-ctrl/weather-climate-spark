@@ -37,8 +37,10 @@ from src.dashboard.services import (
     build_filters,
     get_filter_options,
     inspect_upload,
+    is_prefetching,
     load_builtin,
     load_upload,
+    prefetch_status,
 )
 from src.dashboard.ui.components import render_header
 from src.dashboard.ui.sections import (
@@ -129,13 +131,16 @@ def render_sidebar(spark: SparkSession, store: ActiveDatasetStore) -> Filters | 
 
     if source_choice == "Built-in dataset":
         if st.sidebar.button("Reload built-in dataset", key="btn_reload_builtin"):
-            with st.spinner("Reloading built-in dataset into Spark..."):
+            with st.sidebar.status("Reloading built-in dataset...", expanded=True) as status_box:
+                def _prog(step_name: str, idx: int, total: int):
+                    status_box.write(f"[{idx}/{total}] {step_name}...")
                 try:
-                    load_builtin(spark)
-                    st.sidebar.success("Built-in dataset reloaded successfully.")
+                    load_builtin(spark, progress=_prog)
+                    status_box.update(label="Built-in dataset reloaded successfully!", state="complete", expanded=False)
                     st.rerun()
                 except Exception as exc:
                     logger.exception("Failed to load built-in dataset")
+                    status_box.update(label="Failed to reload dataset", state="error")
                     st.sidebar.error(f"Could not load built-in dataset: {exc}")
 
     else:
@@ -213,7 +218,9 @@ def render_sidebar(spark: SparkSession, store: ActiveDatasetStore) -> Filters | 
                 disable_btn = has_duplicate or (chosen_mapping.get("location") == NO_COLUMN_LABEL and not default_loc)
 
                 if st.sidebar.button("Process dataset", disabled=disable_btn, key="btn_process_upload"):
-                    with st.spinner("Processing, validating, and cleaning uploaded dataset..."):
+                    with st.sidebar.status("Processing uploaded dataset...", expanded=True) as status_box:
+                        def _prog(step_name: str, idx: int, total: int):
+                            status_box.write(f"[{idx}/{total}] {step_name}...")
                         try:
                             prep = load_upload(
                                 spark=spark,
@@ -221,11 +228,14 @@ def render_sidebar(spark: SparkSession, store: ActiveDatasetStore) -> Filters | 
                                 mapping=chosen_mapping,
                                 default_location=default_loc,
                                 fill_gaps=fill_gaps,
+                                progress=_prog,
                             )
                             raw_in = prep.cleaning_report.summary.get("raw_rows_in", 0)
                             clean_out = prep.cleaning_report.summary.get("clean_rows_out", 0)
-                            st.sidebar.success(
-                                f"Dataset ingested: {raw_in:,} raw rows in -> {clean_out:,} clean rows out."
+                            status_box.update(
+                                label=f"Dataset ingested: {raw_in:,} raw in -> {clean_out:,} clean out.",
+                                state="complete",
+                                expanded=False,
                             )
                             st.rerun()
                         except PipelineError as p_err:
@@ -325,6 +335,12 @@ def render_sidebar(spark: SparkSession, store: ActiveDatasetStore) -> Filters | 
             years=selected_years,
             seasons=selected_seasons,
         )
+        st.sidebar.divider()
+        done_p, total_p = prefetch_status()
+        if is_prefetching():
+            st.sidebar.caption(f"⚡ Prefetching queries in background: ({done_p}/{total_p})...")
+        elif done_p > 0:
+            st.sidebar.caption(f"⚡ Cache warm ({done_p}/{total_p} queries ready)")
         return filters
     except ValueError as ve:
         st.error(str(ve))
@@ -342,11 +358,15 @@ def main():
 
     # Initial dataset load if store is empty
     if not store.is_ready(spark):
-        with st.spinner("Starting Spark and preparing the dataset (first load takes about 20-30 seconds)..."):
+        with st.status("Initializing and preparing built-in dataset...", expanded=True) as status_box:
+            def _prog(step_name: str, idx: int, total: int):
+                status_box.write(f"[{idx}/{total}] {step_name}...")
             try:
-                load_builtin(spark)
+                load_builtin(spark, progress=_prog)
+                status_box.update(label="Dataset preparation complete!", state="complete", expanded=False)
             except Exception as exc:
                 logger.exception("First load of built-in dataset failed")
+                status_box.update(label=f"Failed to initialize dataset: {exc}", state="error")
                 st.error(f"Failed to initialize dataset: {exc}")
                 if st.button("Retry initialization"):
                     st.rerun()

@@ -119,8 +119,12 @@ def validate(
     # ── 2. Total Rows Check ───────────────────────────────────────────────────
     target_view = std_view if std_view is not None else raw_view
     row_count_sql = f"SELECT COUNT(*) AS total FROM {target_view}"
-    total_row = _execute_logged_sql("Count total dataset rows", row_count_sql).collect()[0]
-    total_rows: int = int(total_row["total"])
+    report.sql_log.append({"title": "Count total dataset rows", "sql": row_count_sql.strip()})
+    if original_row_count is not None:
+        total_rows = original_row_count
+    else:
+        total_row = spark.sql(row_count_sql).collect()[0]
+        total_rows = int(total_row["total"])
     report.info["total_rows"] = total_rows
 
     if total_rows == 0:

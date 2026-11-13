@@ -32,6 +32,18 @@ from src.utils import display_path, to_spark_path
 from src.validator import ValidationReport, validate
 
 
+DATE_FORMAT_PATTERNS: dict[str, str] = {
+    "yyyy-MM-dd": r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+    "dd-MM-yyyy": r"^[0-9]{2}-[0-9]{2}-[0-9]{4}$",
+    "MM-dd-yyyy": r"^[0-9]{2}-[0-9]{2}-[0-9]{4}$",
+    "yyyy/MM/dd": r"^[0-9]{4}/[0-9]{2}/[0-9]{2}$",
+    "dd/MM/yyyy": r"^[0-9]{2}/[0-9]{2}/[0-9]{4}$",
+    "MM/dd/yyyy": r"^[0-9]{2}/[0-9]{2}/[0-9]{4}$",
+    "dd.MM.yyyy": r"^[0-9]{2}\.[0-9]{2}\.[0-9]{4}$",
+    "yyyyMMdd": r"^[0-9]{8}$",
+}
+
+
 class DatasetLoadError(Exception):
     """Raised when dataset loading encounters fatal structural or format errors."""
     pass
@@ -159,6 +171,11 @@ def load_raw_csv(
         .csv(spark_path)
     )
     df.createOrReplaceTempView(view_name)
+    try:
+        if not spark.catalog.isCached(view_name):
+            spark.catalog.cacheTable(view_name)
+    except Exception:
+        pass
     return df
 
 
@@ -196,7 +213,7 @@ def detect_date_format(
     """
     escaped_col = date_column.replace("`", "``")
     fmt_clauses = [
-        f"COUNT(to_date(`{escaped_col}`, '{fmt}')) AS `fmt_{i}`"
+        f"COUNT(CASE WHEN `{escaped_col}` RLIKE '{DATE_FORMAT_PATTERNS.get(fmt, '')}' THEN to_date(`{escaped_col}`, '{fmt}') END) AS `fmt_{i}`"
         for i, fmt in enumerate(DATE_FORMAT_CANDIDATES)
     ]
 
@@ -327,6 +344,11 @@ def standardize(
 
     df = spark.sql(sql)
     df.createOrReplaceTempView(view_name)
+    try:
+        if not spark.catalog.isCached(view_name):
+            spark.catalog.cacheTable(view_name)
+    except Exception:
+        pass
     return df
 
 

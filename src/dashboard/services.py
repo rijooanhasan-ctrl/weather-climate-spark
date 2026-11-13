@@ -16,6 +16,8 @@ Architecture & Isolation Rules:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -48,6 +50,7 @@ from src.queries.base import Filters, QueryResult, build_where
 from src.queries.kpis import kpi_summary
 from src.queries.registry import ANALYSES_BY_KEY, get_analysis
 from src.dashboard.insights import Insight, generate_insights
+from src.dashboard.result_cache import ResultCache
 from src.sql_utils import quote_identifier
 from src.upload import UploadError, save_uploaded_file
 from src.validator import ValidationReport
@@ -127,15 +130,15 @@ class ActiveDatasetStore:
             self._source = ""
             self._load_seconds = 0.0
 
-    def is_ready(self, spark: SparkSession) -> bool:
+    def is_ready(self, spark: SparkSession | None = None) -> bool:
         """
         Verify that an active dataset is loaded and its clean view exists in Spark.
-
-        Returns False if no dataset is loaded or if its registered clean view
-        has been dropped or invalidated in the Spark catalog.
+        Costs 0 Spark jobs.
         """
         if self._prepared is None or not self._prepared.clean_view:
             return False
+        if spark is None:
+            return True
         try:
             return spark.catalog.tableExists(self._prepared.clean_view)
         except Exception:
@@ -150,7 +153,8 @@ class ActiveDatasetStore:
         load_seconds: float,
     ) -> None:
         """
-        Replace the active dataset. Uncaches previous view and increments version.
+        Replace the active dataset. Uncaches previous view, increments version,
+        and invalidates the query result cache.
         """
         with self._mutation_lock:
             # Uncache previous view if it existed to prevent stale memory caching
@@ -166,20 +170,29 @@ class ActiveDatasetStore:
             self._source = source
             self._load_seconds = float(load_seconds)
             self._version += 1
+            ResultCache.get_instance().clear()
 
 
 # =============================================================================
 # 2. Dataset Loading Services
 # =============================================================================
 
-def load_builtin(spark: SparkSession) -> PreparedData:
+def load_builtin(
+    spark: SparkSession,
+    progress: Callable[[str, int, int], None] | None = None,
+) -> PreparedData:
     """
     Prepare and cache the primary built-in 8-city historical weather dataset.
 
     Registers result in ActiveDatasetStore with label BUILTIN_DATASET_LABEL.
     """
     t0 = time.perf_counter()
-    prepared = prepare(spark, path=PRIMARY_DATASET_PATH, view_name=CLEAN_VIEW_NAME)
+    prepared = prepare(
+        spark=spark,
+        path=PRIMARY_DATASET_PATH,
+        view_name=CLEAN_VIEW_NAME,
+        progress=progress,
+    )
     duration = time.perf_counter() - t0
     ActiveDatasetStore.get_instance().set_active(
         spark=spark,
@@ -188,6 +201,7 @@ def load_builtin(spark: SparkSession) -> PreparedData:
         source="builtin",
         load_seconds=duration,
     )
+    start_prefetch(spark)
     return prepared
 
 
@@ -242,6 +256,7 @@ def load_upload(
     default_location: str | None = None,
     date_format: str | None = None,
     fill_gaps: bool = True,
+    progress: Callable[[str, int, int], None] | None = None,
 ) -> PreparedData:
     """
     Validate and ingest an uploaded CSV into the active dataset store.
@@ -260,6 +275,8 @@ def load_upload(
         Date format override.
     fill_gaps : bool, default True
         Whether to linearly interpolate short gaps (<= 3 days).
+    progress : Callable[[str, int, int], None], optional
+        Optional callback reporting pipeline preparation progress.
     """
     # Reject directory traversal / path separators
     if "/" in saved_name or "\\" in saved_name or ".." in saved_name or Path(saved_name).name != saved_name:
@@ -289,6 +306,7 @@ def load_upload(
         default_location=default_location,
         clean_options=clean_options,
         view_name=CLEAN_VIEW_NAME,
+        progress=progress,
     )
     duration = time.perf_counter() - t0
 
@@ -299,6 +317,7 @@ def load_upload(
         source="upload",
         load_seconds=duration,
     )
+    start_prefetch(spark)
     return prepared
 
 
@@ -400,58 +419,70 @@ def get_kpis(
     When the selection contains zero rows, returns total_records: 0 and None
     for all other metrics without raising an exception.
     """
-    result = kpi_summary(spark, filters=filters, view=view)
-    rows = result.df.collect()
+    store = ActiveDatasetStore.get_instance()
+    cache = ResultCache.get_instance()
+    cache_key = ResultCache.build_key(
+        version=store.version,
+        filters=filters,
+        analysis_key="kpis_dict",
+        params=None,
+    )
 
-    if not rows or rows[0]["total_records"] == 0 or rows[0]["total_records"] is None:
+    def _compute() -> dict[str, Any]:
+        result = kpi_summary(spark, filters=filters, view=view)
+        rows = result.df.collect()
+
+        if not rows or rows[0]["total_records"] == 0 or rows[0]["total_records"] is None:
+            return {
+                "total_records": 0,
+                "locations": None,
+                "first_date": None,
+                "last_date": None,
+                "avg_temp": None,
+                "max_temp": None,
+                "max_temp_date": None,
+                "max_temp_location": None,
+                "min_temp": None,
+                "min_temp_date": None,
+                "min_temp_location": None,
+                "total_rainfall_mm": None,
+                "avg_annual_rainfall_per_location": None,
+                "avg_humidity": None,
+                "avg_wind_speed": None,
+                "avg_pressure": None,
+                "wettest_year": None,
+                "hottest_year": None,
+                "interpolated_value_count": 0,
+                "sql": result.sql,
+                "parameters": result.parameters,
+            }
+
+        row = rows[0].asDict()
         return {
-            "total_records": 0,
-            "locations": None,
-            "first_date": None,
-            "last_date": None,
-            "avg_temp": None,
-            "max_temp": None,
-            "max_temp_date": None,
-            "max_temp_location": None,
-            "min_temp": None,
-            "min_temp_date": None,
-            "min_temp_location": None,
-            "total_rainfall_mm": None,
-            "avg_annual_rainfall_per_location": None,
-            "avg_humidity": None,
-            "avg_wind_speed": None,
-            "avg_pressure": None,
-            "wettest_year": None,
-            "hottest_year": None,
-            "interpolated_value_count": 0,
+            "total_records": int(row.get("total_records") or 0),
+            "locations": int(row["locations"]) if row.get("locations") is not None else None,
+            "first_date": row.get("first_date"),
+            "last_date": row.get("last_date"),
+            "avg_temp": float(row["avg_temp"]) if row.get("avg_temp") is not None else None,
+            "max_temp": float(row["max_temp"]) if row.get("max_temp") is not None else None,
+            "max_temp_date": row.get("max_temp_date"),
+            "max_temp_location": row.get("max_temp_location"),
+            "min_temp": float(row["min_temp"]) if row.get("min_temp") is not None else None,
+            "min_temp_date": row.get("min_temp_date"),
+            "min_temp_location": row.get("min_temp_location"),
+            "total_rainfall_mm": float(row["total_rainfall_mm"]) if row.get("total_rainfall_mm") is not None else None,
+            "avg_annual_rainfall_per_location": float(row["avg_annual_rainfall_per_location"]) if row.get("avg_annual_rainfall_per_location") is not None else None,
+            "avg_humidity": float(row["avg_humidity"]) if row.get("avg_humidity") is not None else None,
+            "avg_wind_speed": float(row["avg_wind_speed"]) if row.get("avg_wind_speed") is not None else None,
+            "avg_pressure": float(row["avg_pressure"]) if row.get("avg_pressure") is not None else None,
+            "wettest_year": int(row["wettest_year"]) if row.get("wettest_year") is not None else None,
+            "hottest_year": int(row["hottest_year"]) if row.get("hottest_year") is not None else None,
+            "interpolated_value_count": int(row.get("interpolated_value_count") or 0),
             "sql": result.sql,
             "parameters": result.parameters,
         }
 
-    row = rows[0].asDict()
-    return {
-        "total_records": int(row.get("total_records") or 0),
-        "locations": int(row["locations"]) if row.get("locations") is not None else None,
-        "first_date": row.get("first_date"),
-        "last_date": row.get("last_date"),
-        "avg_temp": float(row["avg_temp"]) if row.get("avg_temp") is not None else None,
-        "max_temp": float(row["max_temp"]) if row.get("max_temp") is not None else None,
-        "max_temp_date": row.get("max_temp_date"),
-        "max_temp_location": row.get("max_temp_location"),
-        "min_temp": float(row["min_temp"]) if row.get("min_temp") is not None else None,
-        "min_temp_date": row.get("min_temp_date"),
-        "min_temp_location": row.get("min_temp_location"),
-        "total_rainfall_mm": float(row["total_rainfall_mm"]) if row.get("total_rainfall_mm") is not None else None,
-        "avg_annual_rainfall_per_location": float(row["avg_annual_rainfall_per_location"]) if row.get("avg_annual_rainfall_per_location") is not None else None,
-        "avg_humidity": float(row["avg_humidity"]) if row.get("avg_humidity") is not None else None,
-        "avg_wind_speed": float(row["avg_wind_speed"]) if row.get("avg_wind_speed") is not None else None,
-        "avg_pressure": float(row["avg_pressure"]) if row.get("avg_pressure") is not None else None,
-        "wettest_year": int(row["wettest_year"]) if row.get("wettest_year") is not None else None,
-        "hottest_year": int(row["hottest_year"]) if row.get("hottest_year") is not None else None,
-        "interpolated_value_count": int(row.get("interpolated_value_count") or 0),
-        "sql": result.sql,
-        "parameters": result.parameters,
-    }
+    return cache.get_or_compute(cache_key, _compute)
 
 
 def get_preview(
@@ -601,55 +632,101 @@ def get_analysis_frame(
     Execute a registered analysis query, convert result to a pandas DataFrame,
     and return an AnalysisFrame structure.
 
+    Leverages ResultCache with single-flight execution so duplicate calls
+    share identical results across concurrent threads without duplicate Spark jobs.
     Catches row-limit safety exceptions and filter validation errors, returning
     an empty DataFrame and a human-friendly error message.
     """
-    try:
-        item = get_analysis(key)
-    except ValueError as ve:
-        return AnalysisFrame(
-            key=key,
-            title=key,
-            df=pd.DataFrame(),
-            sql="",
-            parameters={},
-            error=str(ve),
-        )
+    store = ActiveDatasetStore.get_instance()
+    cache = ResultCache.get_instance()
+    cache_key = ResultCache.build_key(
+        version=store.version,
+        filters=filters,
+        analysis_key=key,
+        params=params,
+    )
 
-    title = item.get("title", key)
-    fn = item["function"]
-    kw = dict(params or {})
+    def _compute() -> AnalysisFrame:
+        try:
+            item = get_analysis(key)
+        except ValueError as ve:
+            return AnalysisFrame(
+                key=key,
+                title=key,
+                df=pd.DataFrame(),
+                sql="",
+                parameters={},
+                error=str(ve),
+            )
 
-    try:
-        res: QueryResult = fn(spark, filters=filters, view=view, **kw)
-        df = res.to_pandas()
-        return AnalysisFrame(
-            key=key,
-            title=title,
-            df=df,
-            sql=res.sql,
-            parameters=res.parameters,
-            error=None,
-        )
-    except ValueError as ve:
-        # Row limit exceeded or filter range invalid
-        return AnalysisFrame(
-            key=key,
-            title=title,
-            df=pd.DataFrame(),
-            sql="",
-            parameters=kw,
-            error=str(ve),
-        )
-    except Exception as exc:
-        return AnalysisFrame(
-            key=key,
-            title=title,
-            df=pd.DataFrame(),
-            sql="",
-            parameters=kw,
-            error=f"Error executing analysis '{key}': {exc}",
-        )
+        title = item.get("title", key)
+        fn = item["function"]
+        kw = dict(params or {})
+
+        try:
+            res: QueryResult = fn(spark, filters=filters, view=view, **kw)
+            df = res.to_pandas()
+            return AnalysisFrame(
+                key=key,
+                title=title,
+                df=df,
+                sql=res.sql,
+                parameters=res.parameters,
+                error=None,
+            )
+        except ValueError as ve:
+            # Row limit exceeded or filter range invalid
+            return AnalysisFrame(
+                key=key,
+                title=title,
+                df=pd.DataFrame(),
+                sql="",
+                parameters=kw,
+                error=str(ve),
+            )
+        except Exception as exc:
+            return AnalysisFrame(
+                key=key,
+                title=title,
+                df=pd.DataFrame(),
+                sql="",
+                parameters=kw,
+                error=f"Error executing analysis '{key}': {exc}",
+            )
+
+    return cache.get_or_compute(cache_key, _compute)
+
+
+def fetch_many(
+    spark: SparkSession,
+    keys: list[str],
+    filters: Filters | None = None,
+    params: dict[str, Any] | None = None,
+    view: str = CLEAN_VIEW_NAME,
+    max_workers: int = 4,
+) -> dict[str, AnalysisFrame]:
+    """
+    Execute multiple registered analysis queries concurrently using a thread pool.
+
+    Each query is isolated so errors in one query do not affect others.
+    Leverages ResultCache for instant cache hits and single-flight deduplication.
+    """
+    results: dict[str, AnalysisFrame] = {}
+
+    def _fetch_one(k: str) -> tuple[str, AnalysisFrame]:
+        frame = get_analysis_frame(spark, k, filters=filters, params=params, view=view)
+        return k, frame
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_fetch_one, k) for k in keys]
+        for f in as_completed(futures):
+            try:
+                k, frame = f.result()
+                results[k] = frame
+            except Exception:
+                pass
+
+    return results
 
 
 def get_insights(
@@ -659,6 +736,7 @@ def get_insights(
 ) -> list[Insight]:
     """
     Synthesize natural language climate insights across multiple analysis queries.
+    Uses fetch_many to run prerequisite analytical queries concurrently.
     """
     kpis = get_kpis(spark, filters=filters, view=view)
     if kpis.get("total_records", 0) == 0:
@@ -677,10 +755,11 @@ def get_insights(
         "temp_yearly",
     ]
 
+    fetched = fetch_many(spark, needed_keys, filters=filters, view=view, max_workers=4)
     frames: dict[str, pd.DataFrame] = {}
     for key in needed_keys:
-        frame = get_analysis_frame(spark, key, filters=filters, view=view)
-        if frame.error is None and not frame.df.empty:
+        frame = fetched.get(key)
+        if frame and frame.error is None and not frame.df.empty:
             frames[key] = frame.df
 
     # Also fetch anomaly correlations to check seasonal cycle divergence
@@ -692,4 +771,91 @@ def get_insights(
     )
 
     return generate_insights(frames, kpis, corr_anomaly_df=corr_anomaly_df)
+
+
+# =============================================================================
+# 8. Background Cache Prefetch Service
+# =============================================================================
+
+_prefetch_done: int = 0
+_prefetch_total: int = 22
+_prefetch_lock = threading.Lock()
+_prefetch_active: bool = False
+
+
+def prefetch_status() -> tuple[int, int]:
+    """Return (done_count, total_count) for background cache prefetching."""
+    with _prefetch_lock:
+        return (_prefetch_done, _prefetch_total)
+
+
+def is_prefetching() -> bool:
+    """Return True if background cache prefetching is actively running."""
+    with _prefetch_lock:
+        return _prefetch_active
+
+
+def start_prefetch(
+    spark: SparkSession,
+    filters: Filters | None = None,
+    view: str = CLEAN_VIEW_NAME,
+) -> None:
+    """
+    Launch a background daemon thread that eagerly warms ResultCache.
+    Does not block caller. Computes KPIs, insight frames, then sections.
+    """
+    global _prefetch_done, _prefetch_total, _prefetch_active
+    with _prefetch_lock:
+        _prefetch_done = 0
+        _prefetch_total = 22
+        _prefetch_active = True
+
+    def _worker():
+        global _prefetch_done, _prefetch_active
+        try:
+            # 1. Warm KPIs
+            get_kpis(spark, filters=filters, view=view)
+            with _prefetch_lock:
+                _prefetch_done += 1
+
+            # 2. Warm Insight queries
+            insight_keys = [
+                "temp_location_ranking",
+                "temp_trend",
+                "rain_location_ranking",
+                "rain_seasonal",
+                "rain_unusual_months",
+                "extreme_events_yearly",
+                "heatwave_spells",
+                "correlations",
+                "rain_yearly",
+                "temp_yearly",
+            ]
+            for ik in insight_keys:
+                get_analysis_frame(spark, ik, filters=filters, view=view)
+                with _prefetch_lock:
+                    _prefetch_done += 1
+
+            # Anomaly correlations
+            get_analysis_frame(
+                spark, "correlations", filters=filters, params={"mode": "anomaly"}, view=view
+            )
+
+            # 3. Warm remaining registry queries
+            remaining_keys = [
+                k for k in ANALYSES_BY_KEY
+                if k not in insight_keys and k != "kpi_summary"
+            ]
+            for rk in remaining_keys:
+                get_analysis_frame(spark, rk, filters=filters, view=view)
+                with _prefetch_lock:
+                    _prefetch_done += 1
+        except Exception:
+            pass
+        finally:
+            with _prefetch_lock:
+                _prefetch_active = False
+
+    t = threading.Thread(target=_worker, daemon=True, name="PrefetchDaemon")
+    t.start()
 

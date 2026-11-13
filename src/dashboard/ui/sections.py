@@ -77,7 +77,6 @@ def _filters_repr(f: Filters | None) -> str:
     return f"{locs}|{f.start_date}|{f.end_date}|{yrs}|{sns}"
 
 
-@st.cache_data
 def _cached_analysis_frame(
     version: int,
     filters_str: str,
@@ -87,12 +86,11 @@ def _cached_analysis_frame(
     view: str,
     filters_obj: Filters | None,
 ) -> AnalysisFrame:
-    """Cache AnalysisFrame objects keyed by dataset version, filters, and parameters."""
+    """Retrieve AnalysisFrame backed by thread-safe ResultCache singleton."""
     params_dict = dict(params_tuple) if params_tuple else None
     return get_analysis_frame(_spark, key=key, filters=filters_obj, params=params_dict, view=view)
 
 
-@st.cache_data
 def _cached_insights(
     version: int,
     filters_str: str,
@@ -100,7 +98,7 @@ def _cached_insights(
     view: str,
     filters_obj: Filters | None,
 ) -> list:
-    """Cache natural language climate insights."""
+    """Retrieve natural language climate insights backed by ResultCache."""
     return get_insights(_spark, filters=filters_obj, view=view)
 
 
