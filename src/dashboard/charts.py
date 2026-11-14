@@ -82,15 +82,23 @@ def build_empty_figure(annotation_text: str = "No data for the current selection
 
 def apply_theme(fig: go.Figure, title: str | None = None, height: int | None = None) -> go.Figure:
     """Apply consistent styling, transparent backgrounds, and typography."""
-    fig.update_layout(
-        template=settings.PLOTLY_TEMPLATE_NAME,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        title=dict(text=title, font=dict(family="Epilogue, sans-serif", size=15, color="#1F1815")) if title else None,
-        height=height or settings.CHART_HEIGHT,
-        font=dict(family="Plus Jakarta Sans, sans-serif", color="#1F1815"),
-        margin=dict(l=40, r=20, t=50, b=40),
-    )
+    layout_update: dict[str, Any] = {
+        "template": settings.PLOTLY_TEMPLATE_NAME,
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "height": height or settings.CHART_HEIGHT,
+        "font": dict(family="Plus Jakarta Sans, sans-serif", color="#1F1815"),
+        "margin": dict(l=50, r=40, t=50, b=50),
+    }
+    if title:
+        layout_update["title"] = dict(
+            text=title,
+            font=dict(family="Epilogue, sans-serif", size=15, color="#1F1815"),
+        )
+    fig.update_layout(**layout_update)
+    if not title:
+        if hasattr(fig.layout, "title") and not getattr(fig.layout.title, "text", None):
+            fig.layout.pop("title", None)
     return fig
 
 

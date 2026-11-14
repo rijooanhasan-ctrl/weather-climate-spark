@@ -387,8 +387,10 @@ div[data-testid="stMetricValue"] div {{
     background-color: {c['card_bg']};
     border: 1px solid {c['card_border']};
     border-radius: 12px;
-    padding: 14px 16px;
-    min-height: 128px;
+    padding: 12px 14px;
+    min-height: 115px;
+    box-sizing: border-box;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -433,18 +435,22 @@ div[data-testid="stMetricValue"] div {{
     align-items: baseline;
     gap: 4px;
     margin: 4px 0 2px 0;
+    white-space: nowrap;
+    overflow: hidden;
 }}
 .wcp-kpi-val {{
     font-family: {FONT_HEADING};
-    font-size: 1.55rem;
+    font-size: 1.45rem;
     font-weight: 800;
     color: {c['text_primary']};
     line-height: 1.1;
+    white-space: nowrap;
 }}
 .wcp-kpi-unit {{
     font-family: {FONT_BODY};
     font-size: 0.85rem;
     font-weight: 600;
+    white-space: nowrap;
 }}
 .wcp-kpi-caption {{
     font-family: {FONT_BODY};
@@ -454,6 +460,9 @@ div[data-testid="stMetricValue"] div {{
     display: flex;
     align-items: center;
     gap: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }}
 .wcp-caption-dot {{
     width: 5px;

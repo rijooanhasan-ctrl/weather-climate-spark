@@ -74,12 +74,12 @@ _warm_layout = go.Layout(
         ),
     ),
     legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="center",
-        x=0.5,
-        bgcolor="rgba(255, 255, 255, 0.8)",
+        orientation="v",
+        yanchor="top",
+        y=1.0,
+        xanchor="left",
+        x=1.02,
+        bgcolor="rgba(255, 255, 255, 0.85)",
         bordercolor="#E5DDD0",
         borderwidth=1,
         font=dict(
@@ -88,7 +88,7 @@ _warm_layout = go.Layout(
             size=11,
         ),
     ),
-    margin=dict(l=40, r=20, t=50, b=40),
+    margin=dict(l=50, r=40, t=50, b=50),
 )
 
 # Register template globally in Plotly's registry

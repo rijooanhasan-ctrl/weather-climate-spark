@@ -188,21 +188,21 @@ def build_kpi_card_html(
         else '<div class="wcp-kpi-caption">&nbsp;</div>'
     )
 
-    return f"""
-<div class="wcp-kpi-card {tint_class} wcp-accent-{accent}">
-    <div class="wcp-kpi-top">
-        <div class="wcp-kpi-label">{safe_label}</div>
-        <div class="wcp-kpi-icon-tile" style="background-color: {style['icon_bg']}; color: {style['icon_color']};">
-            {svg_icon}
-        </div>
-    </div>
-    <div class="wcp-kpi-val-row">
-        <span class="wcp-kpi-val">{safe_val}</span>
-        {unit_span}
-    </div>
-    {caption_div}
-</div>
-"""
+    return (
+        f'<div class="wcp-kpi-card {tint_class} wcp-accent-{accent}">'
+        f'<div class="wcp-kpi-top">'
+        f'<div class="wcp-kpi-label">{safe_label}</div>'
+        f'<div class="wcp-kpi-icon-tile" style="background-color: {style["icon_bg"]}; color: {style["icon_color"]};">'
+        f'{svg_icon}'
+        f'</div>'
+        f'</div>'
+        f'<div class="wcp-kpi-val-row">'
+        f'<span class="wcp-kpi-val">{safe_val}</span>'
+        f'{unit_span}'
+        f'</div>'
+        f'{caption_div}'
+        f'</div>'
+    )
 
 
 def kpi_card(
@@ -227,18 +227,16 @@ def kpi_card(
 
 def render_header(store: ActiveDatasetStore):
     """Render styled header banner, badge, and dataset status strip."""
-    st.markdown(
-        f"""
-        <div class="wcp-header-block">
-            <div class="wcp-header-title-row">
-                <span class="wcp-header-title">{html.escape(DASHBOARD_TITLE)}</span>
-                <span class="wcp-badge">{html.escape(DASHBOARD_SUBTITLE)}</span>
-            </div>
-            <p class="wcp-header-subtitle">Daily weather analysis built on Spark SQL</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    header_html = (
+        '<div class="wcp-header-block">'
+        '<div class="wcp-header-title-row">'
+        f'<span class="wcp-header-title">{html.escape(DASHBOARD_TITLE)}</span>'
+        f'<span class="wcp-badge">{html.escape(DASHBOARD_SUBTITLE)}</span>'
+        '</div>'
+        '<p class="wcp-header-subtitle">Daily weather analysis built on Spark SQL</p>'
+        '</div>'
     )
+    st.markdown(header_html, unsafe_allow_html=True)
 
     if store.prepared is None:
         return
@@ -250,34 +248,32 @@ def render_header(store: ActiveDatasetStore):
 
     interp_style = 'style="color: #D97706; font-weight: 700;"' if interp_cnt > 0 else ""
 
-    st.markdown(
-        f"""
-        <div class="wcp-status-strip">
-            <div class="wcp-status-item">
-                <span class="wcp-status-dot"></span>
-                <span>Dataset:</span>
-                <span class="wcp-status-val">{html.escape(store.label)}</span>
-            </div>
-            <div class="wcp-status-item">
-                <span>Source:</span>
-                <span class="wcp-status-val">{html.escape(store.source.upper())}</span>
-            </div>
-            <div class="wcp-status-item">
-                <span>Raw In:</span>
-                <span class="wcp-status-val">{raw_in:,}</span>
-            </div>
-            <div class="wcp-status-item">
-                <span>Clean Out:</span>
-                <span class="wcp-status-val">{clean_out:,}</span>
-            </div>
-            <div class="wcp-status-item" {interp_style}>
-                <span>Interpolated:</span>
-                <span class="wcp-status-val">{interp_cnt:,} values</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    status_html = (
+        '<div class="wcp-status-strip">'
+        '<div class="wcp-status-item">'
+        '<span class="wcp-status-dot"></span>'
+        '<span>Dataset:</span>'
+        f'<span class="wcp-status-val">{html.escape(store.label)}</span>'
+        '</div>'
+        '<div class="wcp-status-item">'
+        '<span>Source:</span>'
+        f'<span class="wcp-status-val">{html.escape(store.source.upper())}</span>'
+        '</div>'
+        '<div class="wcp-status-item">'
+        '<span>Raw In:</span>'
+        f'<span class="wcp-status-val">{raw_in:,}</span>'
+        '</div>'
+        '<div class="wcp-status-item">'
+        '<span>Clean Out:</span>'
+        f'<span class="wcp-status-val">{clean_out:,}</span>'
+        '</div>'
+        f'<div class="wcp-status-item" {interp_style}>'
+        '<span>Interpolated:</span>'
+        f'<span class="wcp-status-val">{interp_cnt:,} values</span>'
+        '</div>'
+        '</div>'
     )
+    st.markdown(status_html, unsafe_allow_html=True)
 
     if interp_cnt > 0:
         st.warning(
@@ -429,20 +425,18 @@ def render_insights(insights: list[Insight]):
     if not insights:
         return
 
-    st.markdown(
-        f"""
-        <div class="wcp-card" style="margin-top: 14px; margin-bottom: 12px; padding: 14px 18px;">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <h3 style="margin: 0; font-size: 1.15rem;">Key findings</h3>
-                    <span class="wcp-badge" style="background-color: #1F1815; color: #FFFFFF;">{len(insights)} insights</span>
-                </div>
-                <span style="font-size: 0.8rem; color: #7A6E65;">Derived from Spark SQL results</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    key_findings_html = (
+        '<div class="wcp-card" style="margin-top: 14px; margin-bottom: 12px; padding: 14px 18px;">'
+        '<div style="display: flex; align-items: center; justify-content: space-between;">'
+        '<div style="display: flex; align-items: center; gap: 10px;">'
+        '<h3 style="margin: 0; font-size: 1.15rem;">Key findings</h3>'
+        f'<span class="wcp-badge" style="background-color: #1F1815; color: #FFFFFF;">{len(insights)} insights</span>'
+        '</div>'
+        '<span style="font-size: 0.8rem; color: #7A6E65;">Derived from Spark SQL results</span>'
+        '</div>'
+        '</div>'
     )
+    st.markdown(key_findings_html, unsafe_allow_html=True)
 
     for ins in insights:
         is_caution = ins.level == "caution"
@@ -451,17 +445,15 @@ def render_insights(insights: list[Insight]):
         cat_key = ins.category.lower().replace(" ", "_")
         escaped_text = html.escape(ins.text)
 
-        st.markdown(
-            f"""
-            <div class="wcp-finding-row {caution_class}">
-                <div style="display: flex; align-items: flex-start; gap: 8px;">
-                    <span class="wcp-category-tag wcp-tag-{cat_key}">{html.escape(ins.category.upper())}</span>
-                    <span style="font-size: 0.92rem; line-height: 1.4; color: #1F1815;">{icon_prefix}{escaped_text}</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        finding_html = (
+            f'<div class="wcp-finding-row {caution_class}">'
+            '<div style="display: flex; align-items: flex-start; gap: 8px;">'
+            f'<span class="wcp-category-tag wcp-tag-{cat_key}">{html.escape(ins.category.upper())}</span>'
+            f'<span style="font-size: 0.92rem; line-height: 1.4; color: #1F1815;">{icon_prefix}{escaped_text}</span>'
+            '</div>'
+            '</div>'
         )
+        st.markdown(finding_html, unsafe_allow_html=True)
 
         with st.expander(f"Evidence & Source Queries ({', '.join(ins.source_keys)})"):
             st.markdown(f"**Category:** `{ins.category.title()}` | **Sources:** `{', '.join(ins.source_keys)}`")
