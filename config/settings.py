@@ -142,12 +142,19 @@ NO_COLUMN_LABEL: str = "(not in file)"
 SPARK_CONF: dict[str, str] = {}
 
 # ── Phase 7 Dashboard & Chart Constants ───────────────────────────────────────
-PLOTLY_TEMPLATE: str = "plotly_dark"
+PLOTLY_TEMPLATE: str = "weather_warm"
 CHART_HEIGHT: int = 420
 CHART_HEIGHT_TALL: int = 560
 MAX_LOCATIONS_IN_CHART: int = 12
-DIVERGING_COLORSCALE: str = "RdBu_r"
-SEQUENTIAL_COLORSCALE: str = "Blues"
+DIVERGING_COLORSCALE: list[list[float | str]] = [
+    [0.0, "#3B5998"],
+    [0.5, "#F7F3EB"],
+    [1.0, "#E05326"],
+]
+SEQUENTIAL_COLORSCALE: list[list[float | str]] = [
+    [0.0, "#F7F3EB"],
+    [1.0, "#2D7A60"],
+]
 SEASON_ORDER: list[str] = ["Winter", "Summer", "Monsoon", "Post-monsoon"]
 MONTH_NAMES: list[str] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -156,6 +163,56 @@ MONTH_NAMES: list[str] = [
 INSIGHT_MIN_ABS_CORR: float = 0.5
 INSIGHT_ANOMALY_DIFF: float = 0.3
 INSIGHT_MAX_ITEMS: int = 12
+
+# ── Phase 11 Design Reference Constants (Warm Light Theme) ─────────────────────
+COLORS: dict[str, str] = {
+    "page_bg": "#F7F3EB",
+    "surface": "#FDFBF7",
+    "card_bg": "#FFFFFF",
+    "card_border": "#E5DDD0",
+    "card_border_hover": "#D3C5AD",
+    "text_primary": "#1F1815",
+    "text_muted": "#7A6E65",
+    "label_muted": "#827661",
+    "accent_mustard": "#F6BA22",
+    "accent_text": "#1F1610",
+    "heat_terracotta": "#E05326",
+    "rain_green": "#2D7A60",
+    "cold_slate": "#3B5998",
+    "wind_slate": "#5A6B82",
+    "success_green": "#16A34A",
+    "caution_bg": "#FFF8EE",
+    "caution_border": "#F6BA22",
+    "error_text": "#BA1A1A",
+    "error_bg": "#FFDAD6",
+    "active_pill_bg": "#1F1815",
+    "active_pill_text": "#FFFFFF",
+    "code_bg": "#1A1411",
+    "code_border": "#3D312A",
+    "code_text": "#F4F0E8",
+    "code_keyword": "#F6BA22",
+    "code_number": "#FE6935",
+}
+
+FONT_HEADING: str = '"Epilogue", sans-serif'
+FONT_BODY: str = '"Plus Jakarta Sans", sans-serif'
+FONT_MONO: str = '"JetBrains Mono", monospace'
+
+LOCATION_PALETTE: list[str] = [
+    "#E05326",  # Terracotta / Heat (Bengaluru)
+    "#2D7A60",  # Forest Rain Green (Chennai)
+    "#F6BA22",  # Mustard / Amber (Delhi)
+    "#3B5998",  # Cold / Slate Blue (Hyderabad)
+    "#7C3AED",  # Warm Violet (Jaipur)
+    "#C2410C",  # Rust Orange (Kolkata)
+    "#0D9488",  # Teal Marine (Mumbai)
+    "#5A6B82",  # Wind Slate (Shillong)
+    "#BE123C",  # Crimson
+    "#059669",  # Emerald
+]
+
+PLOTLY_TEMPLATE_NAME: str = "weather_warm"
+
 
 
 

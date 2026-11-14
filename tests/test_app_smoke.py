@@ -45,19 +45,37 @@ def test_app_smoke_built_in_flow():
     assert not at.exception, f"AppTest encountered unhandled exception(s): {at.exception}"
 
     # 2. Assert application title is present
-    titles = [t.value for t in at.title]
+    titles = [t.value for t in at.title] + [m.value for m in at.markdown]
     assert any("Weather and Climate Pattern Discovery" in t or "Weather & Climate Pattern Discovery" in t for t in titles)
 
-    # 3. Assert headline KPI 'Total records' displays 46,752
-    total_rec_metrics = [m for m in at.metric if "Total Records" in m.label]
-    assert len(total_rec_metrics) > 0, "Missing 'Total Records' metric card"
-    assert total_rec_metrics[0].value == "46,752"
+    # 3. Assert headline KPI cards render all 10 values including 'Total Records' = 46,752
+    # In Phase 11, KPI cards are rendered as custom warm-themed HTML cards via st.markdown
+    total_rec_cards = [m.value for m in at.markdown if "Total Records" in m.value]
+    assert len(total_rec_cards) > 0, "Missing 'Total Records' KPI card"
+    assert "46,752" in total_rec_cards[0]
 
-    # 4. Assert Key Findings card renders >= 5 insights (info/warning boxes)
+    # Verify all 10 KPI values are rendered in the dashboard cards
+    expected_values = [
+        "46,752",    # Total Records
+        "8",         # Locations
+        "24.6",      # Average Temperature
+        "46.6",      # Maximum Temperature
+        "0.5",       # Minimum Temperature
+        "174,900.5", # Total Rainfall
+        "68.9",      # Average Humidity
+        "10.0",      # Average Wind Speed
+        "1009.3",    # Average Pressure
+        "0",         # Interpolated Values
+    ]
+    markdown_content = " ".join(m.value for m in at.markdown)
+    for exp_val in expected_values:
+        assert exp_val in markdown_content, f"Expected KPI value '{exp_val}' not found in cards"
+
+    # 4. Assert Key Findings card renders >= 5 insights (info/warning boxes or finding rows)
     btn_compute = [b for b in at.button if "btn_compute_insights" in getattr(b, "key", "")]
     if btn_compute:
         btn_compute[0].click().run()
-    info_and_warnings = [i.value for i in at.info] + [w.value for w in at.warning]
+    info_and_warnings = [i.value for i in at.info] + [w.value for w in at.warning] + [m.value for m in at.markdown if "wcp-finding-row" in m.value]
     assert len(info_and_warnings) >= 5, f"Expected at least 5 insight callouts, got {len(info_and_warnings)}"
 
     # 5. Filter by only Mumbai (submitted via sidebar filter form)
@@ -68,16 +86,16 @@ def test_app_smoke_built_in_flow():
     apply_btns[0].click().run()
 
     assert not at.exception
-    mumbai_metrics = [m for m in at.metric if "Total Records" in m.label]
-    assert len(mumbai_metrics) > 0
+    mumbai_cards = [m.value for m in at.markdown if "Total Records" in m.value]
+    assert len(mumbai_cards) > 0
     # Mumbai has 5,844 daily records over 16 years (2010-2025)
-    assert mumbai_metrics[0].value == "5,844"
+    assert "5,844" in mumbai_cards[0]
 
     # Verify Mumbai insights are updated
     btn_compute_mumbai = [b for b in at.button if "btn_compute_insights" in getattr(b, "key", "")]
     if btn_compute_mumbai:
         btn_compute_mumbai[0].click().run()
-    mumbai_infos = [i.value for i in at.info]
+    mumbai_infos = [i.value for i in at.info] + [m.value for m in at.markdown if "wcp-finding-row" in m.value]
     assert any("Mumbai" in inf for inf in mumbai_infos)
 
     # 6. Deselect all locations (submitted via sidebar filter form)
@@ -91,8 +109,9 @@ def test_app_smoke_built_in_flow():
     assert any("Select at least one location." in w for w in warning_texts)
 
     # Assert KPI metrics are hidden when no location is selected
-    empty_metrics = [m for m in at.metric if "Total Records" in m.label]
-    assert len(empty_metrics) == 0, "KPI metrics should not be rendered when no location is selected"
+    empty_kpi_cards = [m.value for m in at.markdown if "Total Records" in m.value]
+    assert len(empty_kpi_cards) == 0, "KPI cards should not be rendered when no location is selected"
+
 
 
 def test_app_radio_navigation_first_four_sections():
@@ -104,6 +123,13 @@ def test_app_radio_navigation_first_four_sections():
     app_path = str(Path(__file__).resolve().parent.parent / "app.py")
     at = AppTest.from_file(app_path, default_timeout=240).run()
     assert not at.exception
+
+    sec_radio = at.radio(key="section")
+    expected_sections = [
+        "Overview", "Temperature", "Rainfall", "Climate patterns",
+        "Data quality", "Cleaning report", "Data preview", "Spark SQL"
+    ]
+    assert sec_radio.options == expected_sections
 
     sections_to_test = ["Temperature", "Rainfall", "Climate patterns"]
     for sec in sections_to_test:

@@ -25,6 +25,7 @@ from plotly.subplots import make_subplots
 
 from config import settings
 from config.schema import UNITS
+import src.dashboard.theme  # Registers "weather_warm" Plotly template
 
 # ── Color Palettes & Location Mapping ─────────────────────────────────────────
 
@@ -40,29 +41,23 @@ CANONICAL_LOCATIONS: list[str] = [
     "Shillong",
 ]
 
-_DISCRETE_COLORS: list[str] = (
-    px.colors.qualitative.Plotly
-    + px.colors.qualitative.Dark24
-    + px.colors.qualitative.Bold
-)
-
 LOCATION_COLOR_MAP: dict[str, str] = {
-    loc: _DISCRETE_COLORS[i % len(_DISCRETE_COLORS)]
+    loc: settings.LOCATION_PALETTE[i % len(settings.LOCATION_PALETTE)]
     for i, loc in enumerate(CANONICAL_LOCATIONS)
 }
 
 
 def get_location_color(loc: str) -> str:
-    """Return a deterministic, stable color for a location name."""
+    """Return a deterministic, stable color for a location name from LOCATION_PALETTE."""
     if loc in LOCATION_COLOR_MAP:
         return LOCATION_COLOR_MAP[loc]
-    # For any uploaded dynamic location: hash-based deterministic selection
-    idx = abs(hash(loc)) % len(_DISCRETE_COLORS)
-    return _DISCRETE_COLORS[idx]
+    # For any uploaded dynamic location: hash-based deterministic selection from LOCATION_PALETTE
+    idx = abs(hash(loc)) % len(settings.LOCATION_PALETTE)
+    return settings.LOCATION_PALETTE[idx]
 
 
 def build_empty_figure(annotation_text: str = "No data for the current selection") -> go.Figure:
-    """Return an empty dark-themed figure with a centered informative annotation."""
+    """Return an empty warm-themed figure with a centered informative annotation."""
     fig = go.Figure()
     fig.add_annotation(
         text=annotation_text,
@@ -71,16 +66,16 @@ def build_empty_figure(annotation_text: str = "No data for the current selection
         x=0.5,
         y=0.5,
         showarrow=False,
-        font=dict(size=14, color="#94A3B8"),
+        font=dict(family="Plus Jakarta Sans, sans-serif", size=14, color="#7A6E65"),
     )
     fig.update_layout(
-        template=settings.PLOTLY_TEMPLATE,
+        template=settings.PLOTLY_TEMPLATE_NAME,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=settings.CHART_HEIGHT,
         xaxis=dict(showgrid=False, showticklabels=False, zeroline=False),
         yaxis=dict(showgrid=False, showticklabels=False, zeroline=False),
-        margin=dict(l=40, r=40, t=40, b=40),
+        margin=dict(l=40, r=20, t=50, b=40),
     )
     return fig
 
@@ -88,18 +83,13 @@ def build_empty_figure(annotation_text: str = "No data for the current selection
 def apply_theme(fig: go.Figure, title: str | None = None, height: int | None = None) -> go.Figure:
     """Apply consistent styling, transparent backgrounds, and typography."""
     fig.update_layout(
-        template=settings.PLOTLY_TEMPLATE,
+        template=settings.PLOTLY_TEMPLATE_NAME,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        title=dict(text=title, font=dict(size=15, color="#E2E8F0")) if title else None,
+        title=dict(text=title, font=dict(family="Epilogue, sans-serif", size=15, color="#1F1815")) if title else None,
         height=height or settings.CHART_HEIGHT,
-        font=dict(family="sans-serif", color="#E2E8F0"),
-        legend=dict(
-            bgcolor="rgba(15, 23, 42, 0.6)",
-            bordercolor="rgba(148, 163, 184, 0.2)",
-            borderwidth=1,
-        ),
-        margin=dict(l=50, r=40, t=50, b=50),
+        font=dict(family="Plus Jakarta Sans, sans-serif", color="#1F1815"),
+        margin=dict(l=40, r=20, t=50, b=40),
     )
     return fig
 

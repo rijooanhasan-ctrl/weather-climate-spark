@@ -34,12 +34,16 @@ def get_tree_listing(root: Path) -> list[str]:
 
 def main() -> int:
     print("=" * 80)
-    print("PHASE 9 HEADLESS STREAMLIT SERVER PROBE (PORT 8599)")
+    print("PHASE 11 HEADLESS STREAMLIT SERVER PROBE (PORT 8599)")
     print("=" * 80)
 
     # 1. Folder listing before
-    before_files = get_tree_listing(PROJECT_ROOT)
-    print(f"\n[1] Workspace files before launch: {len(before_files)} items tracked.")
+    parent_dir = PROJECT_ROOT.parent
+    before_parent = sorted([p.name for p in parent_dir.iterdir()])
+    before_root = sorted([p.name for p in PROJECT_ROOT.iterdir() if not p.name.startswith((".git", ".venv"))])
+    print(f"\n[1] Workspace files before launch: {len(before_root)} items in root.")
+    print(f"    Root items: {before_root}")
+    print(f"    Parent items: {before_parent}")
 
     # 2. Start server
     cmd = [
@@ -102,13 +106,18 @@ def main() -> int:
         print("    Log verified clean: 0 tracebacks.")
 
     # 6. Folder listing after
-    after_files = get_tree_listing(PROJECT_ROOT)
-    stray = set(after_files) - set(before_files)
-    print(f"\n[6] Workspace files after termination: {len(after_files)} items.")
-    print(f"    Stray files created: {len(stray)} ({list(stray)})")
+    after_parent = sorted([p.name for p in parent_dir.iterdir()])
+    after_root = sorted([p.name for p in PROJECT_ROOT.iterdir() if not p.name.startswith((".git", ".venv"))])
+    stray_root = set(after_root) - set(before_root)
+    stray_parent = set(after_parent) - set(before_parent)
+    print(f"\n[6] Workspace files after termination: {len(after_root)} items in root.")
+    print(f"    Root items: {after_root}")
+    print(f"    Parent items: {after_parent}")
+    print(f"    Stray files in root: {len(stray_root)} ({list(stray_root)})")
+    print(f"    Stray files in parent: {len(stray_parent)} ({list(stray_parent)})")
 
     print("\n" + "=" * 80)
-    if status_code == 200 and body == "ok" and not has_traceback and len(stray) == 0:
+    if status_code == 200 and body == "ok" and not has_traceback and len(stray_root) == 0 and len(stray_parent) == 0:
         print("HEADLESS PROBE SUCCESS: HTTP 200 'ok', clean logs, 0 stray files.")
         print("=" * 80)
         return 0

@@ -43,6 +43,7 @@ from src.dashboard.services import (
     prefetch_status,
 )
 from src.dashboard.ui.components import render_header
+from src.dashboard.ui.styles import inject_styles
 from src.dashboard.ui.sections import (
     render_cleaning_section,
     render_climate_section,
@@ -71,30 +72,9 @@ st.set_page_config(
     layout="wide",
 )
 
-# Metric card styling: rounded border and padding only (no external fonts or scripts)
-st.markdown(
-    """
-    <style>
-    div[data-testid="stMetric"] {
-        background-color: #1E293B;
-        border: 1px solid #334155;
-        padding: 12px 18px;
-        border-radius: 8px;
-    }
-    div[data-testid="stMetricLabel"] p {
-        font-size: 0.85rem;
-        color: #94A3B8;
-        margin-bottom: 4px;
-    }
-    div[data-testid="stMetricValue"] div {
-        font-size: 1.6rem;
-        font-weight: 600;
-        color: #F8FAFC;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# Inject warm design reference CSS styles
+inject_styles()
+
 
 
 # =============================================================================
@@ -340,6 +320,8 @@ def render_sidebar(spark: SparkSession, store: ActiveDatasetStore) -> Filters | 
         )
         st.sidebar.divider()
         done_p, total_p = prefetch_status()
+        if total_p > 0:
+            st.sidebar.progress(min(max(done_p / total_p, 0.0), 1.0))
         if is_prefetching():
             st.sidebar.caption(f"⚡ Prefetching queries in background: ({done_p}/{total_p})...")
         elif done_p > 0:
