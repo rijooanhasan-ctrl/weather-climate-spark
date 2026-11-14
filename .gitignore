@@ -26,9 +26,11 @@ coverage.xml
 data/raw/*
 data/processed/*
 data/uploads/*
+data/external/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/uploads/.gitkeep
+!data/external/.gitkeep
 !data/raw/india_weather_daily.csv
 
 # ── Spark artefacts ───────────────────────────────────────

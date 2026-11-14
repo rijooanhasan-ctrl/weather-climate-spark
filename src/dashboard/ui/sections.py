@@ -514,6 +514,18 @@ def render_cleaning_section(store: ActiveDatasetStore):
     rep = store.prepared.cleaning_report  # type: ignore
     c_summary = summarize_cleaning(rep)
 
+    rem_info = rep.summary.get("rows_removed", 0)
+    if isinstance(rem_info, dict):
+        total_rem = rem_info.get("total_rows_removed", 0)
+    else:
+        total_rem = int(rem_info) if rem_info is not None else 0
+
+    interp_info = rep.summary.get("values_changed", {}).get("interpolated", {})
+    if isinstance(interp_info, dict):
+        tot_interp = sum(interp_info.values())
+    else:
+        tot_interp = int(interp_info) if interp_info is not None else 0
+
     st.markdown("**Cleaning Pipeline Execution Summary:**")
     s1, s2, s3, s4 = st.columns(4)
     with s1:
@@ -521,9 +533,8 @@ def render_cleaning_section(store: ActiveDatasetStore):
     with s2:
         st.metric("Clean Rows Out", f"{rep.summary.get('clean_rows_out', 0):,}")
     with s3:
-        st.metric("Rows Removed", f"{rep.summary.get('rows_removed', 0):,}")
+        st.metric("Rows Removed", f"{total_rem:,}")
     with s4:
-        tot_interp = rep.summary.get("values_changed", {}).get("total_interpolated", 0)
         st.metric("Total Interpolated", f"{tot_interp:,}")
 
     st.markdown("---")

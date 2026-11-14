@@ -116,23 +116,33 @@ def test_record_high_and_low_temperatures(base_kpis):
 
 
 def test_strongest_correlation(base_kpis):
-    """Rule 8: Captures strongest non-identity correlation above threshold."""
+    """Rule 9: Captures three strongest non-identity correlations among CORRELATION_VARIABLES."""
     corr_df = pd.DataFrame([
-        {"location": "All locations", "var_x": "temp_max", "var_y": "temperature", "r": 0.88, "n_pairs": 46000},
+        {"location": "All locations", "var_x": "temperature", "var_y": "pressure", "r": -0.71, "n_pairs": 46000},
         {"location": "All locations", "var_x": "rainfall", "var_y": "humidity", "r": 0.52, "n_pairs": 46000},
-        {"location": "All locations", "var_x": "temperature", "var_y": "pressure", "r": -0.45, "n_pairs": 46000},
+        {"location": "All locations", "var_x": "wind_speed", "var_y": "pressure", "r": -0.34, "n_pairs": 46000},
     ])
     frames = {"correlations": corr_df}
     insights = generate_insights(frames, base_kpis)
 
-    rule8 = [i for i in insights if "correlations" in i.source_keys]
-    assert len(rule8) >= 1
-    ins = rule8[0]
-    assert "temp_max" in ins.text
+    rule9 = [i for i in insights if "correlations" in i.source_keys]
+    assert len(rule9) >= 1
+    ins = rule9[0]
     assert "temperature" in ins.text
-    assert "+0.88" in ins.text or "0.88" in ins.text
-    assert ins.evidence["strongest_pair"] == "temp_max vs temperature"
-    assert ins.evidence["pearson_r"] == 0.88
+    assert "pressure" in ins.text
+    assert "rainfall" in ins.text
+    assert "humidity" in ins.text
+    assert "wind_speed" in ins.text
+    assert "-0.71" in ins.text
+    assert "+0.52" in ins.text or "0.52" in ins.text
+    assert "-0.34" in ins.text
+    assert "Correlation does not imply causation." in ins.text
+    assert ins.evidence["strongest_pair"] == "temperature vs pressure"
+    assert ins.evidence["pearson_r"] == -0.71
+    assert ins.evidence["second_pair"] == "rainfall vs humidity"
+    assert ins.evidence["second_pearson_r"] == 0.52
+    assert ins.evidence["third_pair"] == "wind_speed vs pressure"
+    assert ins.evidence["third_pearson_r"] == -0.34
 
 
 def test_insufficient_data_3_year_slice(base_kpis):
@@ -186,14 +196,18 @@ def test_numbers_in_evidence_dict(base_kpis):
     insights = generate_insights(frames, base_kpis)
 
     for ins in insights:
-        # Extract floating point numbers and integers from text
-        tokens = re.findall(r"\b\d+(?:\.\d+)?\b", ins.text)
+        # Extract floating point numbers and integers from text (strip thousand-separator commas)
+        clean_text = re.sub(r"(?<=\d),(?=\d)", "", ins.text)
+        tokens = re.findall(r"\b\d+(?:\.\d+)?\b", clean_text)
         evidence_vals = []
         for v in ins.evidence.values():
             if isinstance(v, (int, float)):
                 evidence_vals.append(round(float(v), 2))
                 evidence_vals.append(round(float(v), 1))
                 evidence_vals.append(int(v))
+                evidence_vals.append(abs(round(float(v), 2)))
+                evidence_vals.append(abs(round(float(v), 1)))
+                evidence_vals.append(abs(int(v)))
             elif isinstance(v, str):
                 tokens_in_ev = re.findall(r"\b\d+(?:\.\d+)?\b", v)
                 evidence_vals.extend([float(x) for x in tokens_in_ev if '.' in x])

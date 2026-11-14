@@ -137,25 +137,88 @@ def validate(
         )
 
     # If standardized view is missing (e.g. unmapped date), stop further column checks
+    # If standardized view is missing (e.g. unmapped date), stop further column checks
     if std_view is None:
         return report
 
-    # ── 3. Date Parse Check ───────────────────────────────────────────────────
-    date_check_sql = f"""
-    SELECT
-        COUNT(*) AS total,
-        COUNT(date) AS valid_dates,
-        CAST(MIN(date) AS STRING) AS min_date,
-        CAST(MAX(date) AS STRING) AS max_date
-    FROM {std_view}
-    """
-    date_row = _execute_logged_sql("Verify date parsing and span", date_check_sql).collect()[0]
-    valid_dates: int = int(date_row["valid_dates"])
-    report.info["min_date"] = date_row["min_date"]
-    report.info["max_date"] = date_row["max_date"]
+    # ── Merged Standardized View Profiling Query (Phase 9 A3 / Phase 8 B2) ─────
+    # Consolidates date parsing, numeric parsing, null counts, sentinels,
+    # physical plausibility ranges, and summary statistics into a single query.
+    numeric_columns = [
+        f.name for f in STANDARD_SCHEMA.fields if isinstance(f.dataType, DoubleType)
+    ]
+    mapped_numeric = [col for col in numeric_columns if mapping.get(col) is not None]
+    columns_to_inspect = [
+        f.name for f in STANDARD_SCHEMA.fields
+        if mapping.get(f.name) is not None or f.name in REQUIRED_COLUMNS
+    ]
+    sentinel_str = ", ".join(str(s) for s in SENTINEL_VALUES)
+    inspected_ranges = [col for col in mapped_numeric if col in PLAUSIBLE_RANGES]
 
+    merged_select_items = [
+        "COUNT(date) AS valid_dates",
+        "CAST(MIN(date) AS STRING) AS min_date",
+        "CAST(MAX(date) AS STRING) AS max_date",
+    ]
+
+    for col in mapped_numeric:
+        merged_select_items.append(f"COUNT(`{col}`) AS `{col}_parsed_cnt`")
+        merged_select_items.append(
+            f"COUNT(CASE WHEN `{col}` IN ({sentinel_str}) THEN 1 END) AS `{col}_sentinels`"
+        )
+        merged_select_items.append(
+            f"MIN(CASE WHEN `{col}` NOT IN ({sentinel_str}) THEN `{col}` END) AS `{col}_min`"
+        )
+        merged_select_items.append(
+            f"AVG(CASE WHEN `{col}` NOT IN ({sentinel_str}) THEN `{col}` END) AS `{col}_avg`"
+        )
+        merged_select_items.append(
+            f"MAX(CASE WHEN `{col}` NOT IN ({sentinel_str}) THEN `{col}` END) AS `{col}_max`"
+        )
+        merged_select_items.append(
+            f"COUNT(CASE WHEN `{col}` NOT IN ({sentinel_str}) THEN 1 END) AS `{col}_cnt`"
+        )
+
+    for col in columns_to_inspect:
+        merged_select_items.append(f"COUNT(*) - COUNT(`{col}`) AS `{col}_nulls`")
+
+    for col in inspected_ranges:
+        low, high = PLAUSIBLE_RANGES[col]
+        merged_select_items.append(
+            f"COUNT(CASE WHEN (`{col}` < {low} OR `{col}` > {high}) AND `{col}` NOT IN ({sentinel_str}) THEN 1 END) AS `{col}_out`"
+        )
+        merged_select_items.append(
+            f"COUNT(CASE WHEN `{col}` IS NOT NULL AND `{col}` NOT IN ({sentinel_str}) THEN 1 END) AS `{col}_valid`"
+        )
+
+    # Raw numeric query (executes on raw_view)
+    raw_counts = None
+    if mapped_numeric:
+        raw_select_items = []
+        for col in mapped_numeric:
+            orig = mapping[col]
+            escaped_orig = orig.replace("`", "``")
+            raw_select_items.append(
+                f"COUNT(CASE WHEN trim(`{escaped_orig}`) != '' AND `{escaped_orig}` IS NOT NULL THEN 1 END) AS `{col}_raw_cnt`"
+            )
+        raw_num_sql = f"SELECT {', '.join(raw_select_items)} FROM {raw_view}"
+        raw_counts = _execute_logged_sql("Count non-empty raw numeric cells", raw_num_sql).collect()[0]
+
+    # Execute single merged standardized view query
+    merged_sql = f"SELECT {', '.join(merged_select_items)} FROM {std_view}"
+    merged_row = spark.sql(merged_sql).collect()[0]
+
+    # ── 3. Date Parse Check ───────────────────────────────────────────────────
+    valid_dates: int = int(merged_row["valid_dates"])
+    report.info["min_date"] = merged_row["min_date"]
+    report.info["max_date"] = merged_row["max_date"]
     date_parse_rate = valid_dates / total_rows if total_rows > 0 else 0.0
     report.info["date_parse_rate"] = date_parse_rate
+
+    report.sql_log.append({
+        "title": "Verify date parsing and span",
+        "sql": f"SELECT COUNT(*) AS total, COUNT(date) AS valid_dates, CAST(MIN(date) AS STRING) AS min_date, CAST(MAX(date) AS STRING) AS max_date FROM {std_view}".strip(),
+    })
 
     if date_parse_rate < DATE_PARSE_ERROR_BELOW:
         report.errors.append(
@@ -168,33 +231,14 @@ def validate(
         )
 
     # ── 4. Numeric Parse Check Per Mapped Column ──────────────────────────────
-    numeric_columns = [
-        f.name for f in STANDARD_SCHEMA.fields if isinstance(f.dataType, DoubleType)
-    ]
-    mapped_numeric = [col for col in numeric_columns if mapping.get(col) is not None]
-
-    if mapped_numeric:
-        raw_select_items = []
-        std_select_items = []
-        for col in mapped_numeric:
-            orig = mapping[col]
-            escaped_orig = orig.replace("`", "``")
-            raw_select_items.append(
-                f"COUNT(CASE WHEN trim(`{escaped_orig}`) != '' AND `{escaped_orig}` IS NOT NULL THEN 1 END) AS `{col}_raw_cnt`"
-            )
-            std_select_items.append(
-                f"COUNT(`{col}`) AS `{col}_parsed_cnt`"
-            )
-
-        raw_num_sql = f"SELECT {', '.join(raw_select_items)} FROM {raw_view}"
-        std_num_sql = f"SELECT {', '.join(std_select_items)} FROM {std_view}"
-
-        raw_counts = _execute_logged_sql("Count non-empty raw numeric cells", raw_num_sql).collect()[0]
-        std_counts = _execute_logged_sql("Count successfully parsed numeric values", std_num_sql).collect()[0]
-
+    if mapped_numeric and raw_counts is not None:
+        report.sql_log.append({
+            "title": "Count successfully parsed numeric values",
+            "sql": f"SELECT {', '.join([f'COUNT(`{col}`) AS `{col}_parsed_cnt`' for col in mapped_numeric])} FROM {std_view}".strip(),
+        })
         for col in mapped_numeric:
             raw_cnt = int(raw_counts[f"{col}_raw_cnt"])
-            parsed_cnt = int(std_counts[f"{col}_parsed_cnt"])
+            parsed_cnt = int(merged_row[f"{col}_parsed_cnt"])
             if raw_cnt > 0 and parsed_cnt < raw_cnt:
                 failed_cnt = raw_cnt - parsed_cnt
                 report.info["numeric_parse_failures"][col] = failed_cnt
@@ -210,20 +254,12 @@ def validate(
                     )
 
     # ── 5. Null Value Check ───────────────────────────────────────────────────
-    # Only inspect mapped columns and required columns to avoid spurious warnings on omitted optional columns
-    columns_to_inspect = [
-        f.name for f in STANDARD_SCHEMA.fields
-        if mapping.get(f.name) is not None or f.name in REQUIRED_COLUMNS
-    ]
-
-    null_select_items = [
-        f"COUNT(*) - COUNT(`{col}`) AS `{col}_nulls`" for col in columns_to_inspect
-    ]
-    null_sql = f"SELECT {', '.join(null_select_items)} FROM {std_view}"
-    null_row = _execute_logged_sql("Check null value proportions", null_sql).collect()[0]
-
+    report.sql_log.append({
+        "title": "Check null value proportions",
+        "sql": f"SELECT {', '.join([f'COUNT(*) - COUNT(`{col}`) AS `{col}_nulls`' for col in columns_to_inspect])} FROM {std_view}".strip(),
+    })
     for col in columns_to_inspect:
-        null_cnt = int(null_row[f"{col}_nulls"])
+        null_cnt = int(merged_row[f"{col}_nulls"])
         report.info["null_counts"][col] = null_cnt
         null_rate = null_cnt / total_rows if total_rows > 0 else 0.0
         if null_rate > NULL_WARN_ABOVE:
@@ -236,16 +272,13 @@ def validate(
             )
 
     # ── 6. Sentinel Value Check ───────────────────────────────────────────────
-    sentinel_str = ", ".join(str(s) for s in SENTINEL_VALUES)
-    sentinel_select_items = [
-        f"COUNT(CASE WHEN `{col}` IN ({sentinel_str}) THEN 1 END) AS `{col}_sentinels`"
-        for col in mapped_numeric
-    ]
-    if sentinel_select_items:
-        sentinel_sql = f"SELECT {', '.join(sentinel_select_items)} FROM {std_view}"
-        sentinel_row = _execute_logged_sql("Check sentinel value presence", sentinel_sql).collect()[0]
+    if mapped_numeric:
+        report.sql_log.append({
+            "title": "Check sentinel value presence",
+            "sql": f"SELECT {', '.join([f'COUNT(CASE WHEN `{col}` IN ({sentinel_str}) THEN 1 END) AS `{col}_sentinels`' for col in mapped_numeric])} FROM {std_view}".strip(),
+        })
         for col in mapped_numeric:
-            s_cnt = int(sentinel_row[f"{col}_sentinels"])
+            s_cnt = int(merged_row[f"{col}_sentinels"])
             if s_cnt > 0:
                 report.info["sentinel_counts"][col] = s_cnt
                 report.warnings.append(
@@ -253,32 +286,28 @@ def validate(
                 )
 
     # ── 7. Physical Plausibility Range Check ──────────────────────────────────
-    range_select_items = []
-    inspected_ranges = [col for col in mapped_numeric if col in PLAUSIBLE_RANGES]
-    for col in inspected_ranges:
-        low, high = PLAUSIBLE_RANGES[col]
-        range_select_items.append(
-            f"COUNT(CASE WHEN (`{col}` < {low} OR `{col}` > {high}) AND `{col}` NOT IN ({sentinel_str}) THEN 1 END) AS `{col}_out`"
-        )
-        range_select_items.append(
-            f"COUNT(CASE WHEN `{col}` IS NOT NULL AND `{col}` NOT IN ({sentinel_str}) THEN 1 END) AS `{col}_valid`"
-        )
-
-    if range_select_items:
-        range_sql = f"SELECT {', '.join(range_select_items)} FROM {std_view}"
-        range_row = _execute_logged_sql("Check physical plausibility ranges", range_sql).collect()[0]
+    if inspected_ranges:
+        report.sql_log.append({
+            "title": "Check physical plausibility ranges",
+            "sql": f"SELECT {', '.join([f'COUNT(CASE WHEN (`{col}` < {PLAUSIBLE_RANGES[col][0]} OR `{col}` > {PLAUSIBLE_RANGES[col][1]}) AND `{col}` NOT IN ({sentinel_str}) THEN 1 END) AS `{col}_out`' for col in inspected_ranges])} FROM {std_view}".strip(),
+        })
         for col in inspected_ranges:
-            out_cnt = int(range_row[f"{col}_out"])
-            valid_cnt = int(range_row[f"{col}_valid"])
+            out_cnt = int(merged_row[f"{col}_out"])
+            valid_cnt = int(merged_row[f"{col}_valid"])
             low, high = PLAUSIBLE_RANGES[col]
             if out_cnt > 0:
                 report.info["out_of_range_counts"][col] = out_cnt
                 out_pct = out_cnt / valid_cnt if valid_cnt > 0 else 0.0
                 if out_pct > OUT_OF_RANGE_UNIT_WARN_ABOVE:
-                    report.warnings.append(
-                        f"Column '{col}' has {out_cnt} value(s) ({out_pct:.1%}) outside plausible range "
-                        f"[{low}, {high}]. Possible unit mismatch (expected {UNITS.get(col, '')})."
+                    msg = (
+                        f"Unit mismatch: column '{col}' has {out_cnt} value(s) ({out_pct:.1%}) outside plausible range "
+                        f"[{low}, {high}]. Expected unit: {UNITS.get(col, '')}."
                     )
+                    # Unit mismatch on required numeric column triggers validation error (C3 rule)
+                    if col in REQUIRED_COLUMNS:
+                        report.errors.append(msg)
+                    else:
+                        report.warnings.append(msg)
                 else:
                     report.warnings.append(
                         f"Column '{col}' has {out_cnt} value(s) outside plausible range [{low}, {high}]."
@@ -348,16 +377,19 @@ def validate(
 
     if stats_select_items:
         stats_sql = f"SELECT {', '.join(stats_select_items)} FROM {std_view}"
-        stats_row = _execute_logged_sql("Compute summary statistics for numeric variables", stats_sql).collect()[0]
+        report.sql_log.append({
+            "title": "Compute summary statistics for numeric variables",
+            "sql": stats_sql.strip(),
+        })
         for col in mapped_numeric:
-            cnt = int(stats_row[f"{col}_cnt"])
+            cnt = int(merged_row[f"{col}_cnt"])
             if cnt > 0:
                 report.column_stats.append({
                     "column": col,
                     "unit": UNITS.get(col, ""),
-                    "min": round(float(stats_row[f"{col}_min"]), 2) if stats_row[f"{col}_min"] is not None else None,
-                    "avg": round(float(stats_row[f"{col}_avg"]), 2) if stats_row[f"{col}_avg"] is not None else None,
-                    "max": round(float(stats_row[f"{col}_max"]), 2) if stats_row[f"{col}_max"] is not None else None,
+                    "min": round(float(merged_row[f"{col}_min"]), 2) if merged_row[f"{col}_min"] is not None else None,
+                    "avg": round(float(merged_row[f"{col}_avg"]), 2) if merged_row[f"{col}_avg"] is not None else None,
+                    "max": round(float(merged_row[f"{col}_max"]), 2) if merged_row[f"{col}_max"] is not None else None,
                     "count": cnt,
                 })
 

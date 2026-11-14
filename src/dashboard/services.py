@@ -572,11 +572,22 @@ def summarize_validation(report: ValidationReport) -> dict[str, Any]:
         })
     loc_df = pd.DataFrame(loc_rows) if loc_rows else pd.DataFrame(columns=["Location", "Row Count", "Earliest Date", "Latest Date"])
 
+    sentinel_cnt = sum(report.info.get("sentinel_counts", {}).values()) if isinstance(report.info.get("sentinel_counts"), dict) else 0
+    out_of_range_cnt = sum(report.info.get("out_of_range_counts", {}).values()) if isinstance(report.info.get("out_of_range_counts"), dict) else 0
+    parse_fail_cnt = sum(report.info.get("numeric_parse_failures", {}).values()) if isinstance(report.info.get("numeric_parse_failures"), dict) else 0
+    dup_keys_cnt = report.info.get("duplicate_keys_count", 0)
+
     return {
         "is_valid": report.is_valid,
+        "error_count": len(report.errors),
         "errors": report.errors,
         "warnings": report.warnings,
+        "total_sentinels": sentinel_cnt,
+        "total_out_of_range": out_of_range_cnt,
+        "total_parse_failures": parse_fail_cnt,
+        "total_duplicate_keys": dup_keys_cnt,
         "column_stats": col_df,
+        "column_table": col_df,
         "location_coverage": loc_df,
         "info": report.info,
     }

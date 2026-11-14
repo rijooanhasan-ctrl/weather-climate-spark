@@ -492,3 +492,72 @@ def test_clean_fill_columns_parametrized_linear_interpolation(spark, tmp_path, r
             assert abs(clean_records[1][other_col] - float(rows[1][other_idx])) < 1e-3
             assert abs(clean_records[2][other_col] - float(rows[2][other_idx])) < 1e-3
 
+
+def test_cleaner_counts_fixture(spark, tmp_path, raw_dataset_slices):
+    """
+    Phase 9 A4: Cleaner counts defect fixture test.
+    Injects 3 sentinels, 1 out-of-range, 2 duplicate keys, 2-row gap, 5-row gap into
+    real historical rows and verifies exact count matching against direct SQL on step views.
+    """
+    header = list(raw_dataset_slices["header"])
+    real_rows = [list(r) for r in raw_dataset_slices["bengaluru_rows"][:50]]
+    temp_idx = header.index("temperature")
+    rain_idx = header.index("rainfall")
+    humid_idx = header.index("humidity")
+    press_idx = header.index("pressure")
+
+    rows = [list(r) for r in real_rows]
+    # 3 sentinels in rainfall (-999, -9999, 9999)
+    rows[3][rain_idx] = "-999"
+    rows[7][rain_idx] = "-9999"
+    rows[11][rain_idx] = "9999"
+    # 1 out-of-range in rainfall (2500.0 > 2000.0 mm)
+    rows[15][rain_idx] = "2500.0"
+    # 2-row gap (dates 2010-01-21, 2010-01-22)
+    rows[20][temp_idx] = ""
+    rows[21][temp_idx] = ""
+    # 5-row gap (dates 2010-01-31 to 2010-02-04)
+    for r_i in range(30, 35):
+        rows[r_i][temp_idx] = ""
+    # 2 duplicate keys
+    rows.append(list(rows[40]))
+    rows.append(list(rows[45]))
+
+    file_path = tmp_path / "defect_fixture.csv"
+    with open(file_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows)
+
+    load_res = load_dataset(spark, file_path)
+    df_clean, report = clean(spark, std_view=load_res.standardized_view, view_name="fixture_clean_test", options={"keep_step_views": True})
+
+    # Step 1: Unusable
+    s1_report = report.steps[0]["rows_removed"]
+    s1_sql = int(spark.sql(f"SELECT COUNT(*) AS n FROM {load_res.standardized_view} WHERE date IS NULL OR location IS NULL OR trim(location) = ''").collect()[0]["n"])
+    assert s1_report == s1_sql == 0
+
+    # Step 2: Sentinels
+    s2_report_total = sum(report.steps[1]["values_changed"].values())
+    s2_sql_total = int(spark.sql("SELECT COUNT(*) AS n FROM clean_step_1 WHERE rainfall IN (-999, -9999, 9999)").collect()[0]["n"])
+    assert s2_report_total == s2_sql_total == 3
+
+    # Step 3: Out-of-range
+    s3_report_rain = report.steps[2]["values_changed"].get("rainfall", 0)
+    s3_sql_rain = int(spark.sql("SELECT COUNT(*) AS n FROM clean_step_2 WHERE rainfall < 0.0 OR rainfall > 2000.0").collect()[0]["n"])
+    assert s3_report_rain == s3_sql_rain == 1
+
+    # Step 4: Duplicates
+    s4_report_dups = report.steps[3]["values_changed"]["duplicate_keys"]
+    s4_sql_dups = int(spark.sql("SELECT COUNT(*) AS n FROM (SELECT date, location FROM clean_step_3 GROUP BY date, location HAVING COUNT(*) > 1)").collect()[0]["n"])
+    assert s4_report_dups == s4_sql_dups == 2
+
+    # Step 5: Gap filling
+    s5_report_filled = report.steps[4]["values_changed"].get("temperature", 0)
+    s5_sql_filled = int(spark.sql("SELECT COUNT(*) AS n FROM clean_step_5 WHERE temperature_was_filled = true").collect()[0]["n"])
+    assert s5_report_filled == s5_sql_filled == 2
+
+    s5_sql_unfilled = int(spark.sql("SELECT COUNT(*) AS n FROM clean_step_5 WHERE temperature IS NULL AND date BETWEEN '2010-01-31' AND '2010-02-04'").collect()[0]["n"])
+    assert s5_sql_unfilled == 5
+
+

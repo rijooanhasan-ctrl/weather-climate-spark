@@ -512,14 +512,15 @@ def clean(
         "low_quality_locations": low_quality_locations,
     }
 
-    # Clean up intermediate step views from the catalog
-    for step_v in ["clean_step_1", "clean_step_2", "clean_step_3", "clean_step_4", "clean_step_5"]:
-        try:
-            if spark.catalog.tableExists(step_v):
-                if spark.catalog.isCached(step_v):
-                    spark.catalog.uncacheTable(step_v)
-                spark.catalog.dropTempView(step_v)
-        except Exception:
-            pass
+    # Clean up intermediate step views from the catalog unless explicitly requested to keep
+    if not opts.get("keep_step_views", False):
+        for step_v in ["clean_step_1", "clean_step_2", "clean_step_3", "clean_step_4", "clean_step_5"]:
+            try:
+                if spark.catalog.tableExists(step_v):
+                    if spark.catalog.isCached(step_v):
+                        spark.catalog.uncacheTable(step_v)
+                    spark.catalog.dropTempView(step_v)
+            except Exception:
+                pass
 
     return df_clean, report

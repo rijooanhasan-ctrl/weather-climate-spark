@@ -170,6 +170,9 @@ def load_raw_csv(
         .option("encoding", "UTF-8")
         .csv(spark_path)
     )
+    cleaned_cols = [c.strip().strip('"').strip("'") for c in df.columns]
+    if cleaned_cols != df.columns:
+        df = df.toDF(*cleaned_cols)
     df.createOrReplaceTempView(view_name)
     try:
         if not spark.catalog.isCached(view_name):

@@ -134,13 +134,12 @@ PREVIEW_ROWS_MAX: int = 1000
 BUILTIN_DATASET_LABEL: str = "Built-in dataset: 8 Indian cities, 2010-2025"
 NO_COLUMN_LABEL: str = "(not in file)"
 
-# ── Spark Optimization Settings (Adopted from Phase 8 Experiments) ────────────
-# Only configurations meeting >= 10% speedup and producing identical results
-# across all 22 analysis queries are adopted here.
-SPARK_CONF: dict[str, str] = {
-    # +11.3% speedup on ~47k rows by avoiding Java runtime bytecode compilation overhead
-    "spark.sql.codegen.wholeStage": "false",
-}
+# ── Spark Optimization Settings ───────────────────────────────────────────────
+# Configurations are only adopted if they achieve a 3-run median speedup >= 10%
+# and verified identical results across all 22 analysis queries.
+# Phase 9 3x retest: baseline median 24.840s vs codegen_off 22.843s (+8.04% gain < 10% threshold).
+# Reverted to default Spark codegen configuration per Phase 9 decision rule.
+SPARK_CONF: dict[str, str] = {}
 
 # ── Phase 7 Dashboard & Chart Constants ───────────────────────────────────────
 PLOTLY_TEMPLATE: str = "plotly_dark"

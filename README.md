@@ -354,6 +354,48 @@ Based on rigorous diagnostic testing in the Windows + Python 3.13 + PySpark 3.5.
 | 6 | Streamlit dashboard foundation, column mapping & KPI scorecard | ✅ Complete |
 | 7 | Interactive Plotly charts & auto-generated text insights | ✅ Complete |
 | 8 | Measured performance optimizations, ResultCache & prefetching | ✅ Complete |
+| 9 | UI timing, validator merge, variants & scale test | ✅ Complete |
+
+---
+
+## Supported Inputs and Limits
+
+The ingestion, validation, and cleaning engine is engineered to robustly handle diverse real-world meteorological datasets without crashing:
+
+### Supported Inputs
+* **Date Formats**: Automatically detects and parses `yyyy-MM-dd`, `dd-MM-yyyy`, `MM/dd/yyyy`, `yyyy/MM/dd`, `dd/MM/yyyy`, `MM-dd-yyyy` using regex-guarded parsing.
+* **Delimiters**: Auto-detects comma (`,`), semicolon (`;`), tab (`\t`), and pipe (`|`).
+* **Column Mapping & Aliasing**: Matches common meteorological header aliases (e.g. `Observation_Date`, `Mean_Temp`, `Precipitation`, `Relative_Humidity`, `Wind_Velocity`, `Atmospheric_Pressure`).
+* **Missing Location Handling**: Datasets lacking station names accept a `--location-name` flag or UI fallback.
+* **Sentinels & Outliers**: Nullifies legacy sensor error codes (`-999`, `-9999`, `9999`) and physical range outliers.
+* **Unit Mismatch Guard**: Flags an explicit validation error when $>50\%$ of values in required numeric columns exceed physical limits (e.g. Fahrenheit temperatures).
+* **Gap Filling**: Linearly interpolates short missing spans ($\le 3$ calendar days) with provenance flags; **rainfall is strictly never interpolated**.
+
+### Operational Limits
+* **Local Machine Scale**: Verified on single-node Windows up to **1,000,000 rows** (~60 MB) with complete analytical pipeline execution.
+* **Distributed Scale**: Beyond 1M rows, deployment on a multi-node Apache Spark cluster is recommended with shuffle partitions scaled to executor cores to ensure horizontal linear scaling.
+
+---
+
+## UI Performance Benchmarks (Phase 9)
+
+Measured headlessly using Streamlit `AppTest` on real historical weather observations (46,752 records):
+
+| UI Action / Navigation | Cold Execution (s) | Warm Execution (s) | Target (s) | Status |
+| :--- | :---: | :---: | :---: | :--- |
+| **Start to 10 KPI Cards & Insights** | 57.156 s (incl. prepare) | 0.348 s | <= 12.0 s prepare / <= 3.0 s KPI | **0.348 s (WARM)** |
+| **Switch to Temperature** | 5.426 s | 0.440 s | <= 2.0 s (warm) | **0.440 s (PASS)** |
+| **Switch to Rainfall** | 4.759 s | 0.458 s | <= 2.0 s (warm) | **0.458 s (PASS)** |
+| **Switch to Climate patterns** | 12.292 s | 0.353 s | <= 2.0 s (warm) | **0.353 s (PASS)** |
+| **Switch to Data quality** | 0.080 s | 0.054 s | <= 2.0 s (warm) | **0.054 s (PASS)** |
+| **Switch to Cleaning report** | 0.076 s | 0.068 s | <= 2.0 s (warm) | **0.068 s (PASS)** |
+| **Switch to Data preview** | 0.245 s | 0.262 s | <= 2.0 s (warm) | **0.262 s (PASS)** |
+| **Switch to Spark SQL** | 0.065 s | 0.062 s | <= 2.0 s (warm) | **0.062 s (PASS)** |
+| **Switch back to Overview** | 0.436 s | 0.348 s | <= 2.0 s | **0.348 s (PASS)** |
+| **Filter location: Mumbai** | 14.132 s | 0.270 s | -- | **0.270 s (WARM)** |
+| **Reset filters** | 0.400 s | 0.407 s | -- | **0.407 s (WARM)** |
+| **Spark Jobs Executed** | 846 jobs | 1 job | -- | **-99.9% jobs** |
+| **ResultCache Hit Rate** | 53 hits / 60 misses | 143 hits / 60 misses | -- | **70.4% hit rate** |
 
 ---
 
@@ -372,6 +414,20 @@ Phase 8 systematically profiled, benchmarked, and eliminated Spark job overhead 
 * **Eager In-Memory Materialization & Intermediate Cleanup**: `CACHE TABLE` materializes raw and standardized views eagerly, while intermediate cleaning views (`clean_step_1` through `clean_step_5`) are immediately dropped and uncached to prevent memory leaks and redundant re-reads.
 * **Comprehensive Test Suite**: **141 tests** passing with zero failures and zero warnings, validating correctness, caching, concurrency, security, and performance.
 
+
+---
+
+## Supported Inputs and Limits
+
+* **Input Formats**: CSV files with delimiters `,`, `;`, `\t`, or `|`, optional UTF-8 BOM, and standard date formats (`yyyy-MM-dd`, `dd-MM-yyyy`, `MM-dd-yyyy`, `yyyy/MM/dd`, `dd/MM/yyyy`, `MM/dd/yyyy`, `dd.MM.yyyy`, `yyyyMMdd`).
+* **Header Mapping**: Automatic alias recognition across NOAA, ERA5, and common meteorological conventions (`date`, `location`, `temperature`, `rainfall`, `humidity`, `wind_speed`, `pressure`, etc.). Custom column mappings and fallback default location names are supported.
+* **Unit Safety Guard**: If >50% of values in a required numeric column fall outside plausible meteorological ranges (e.g. Kelvin or Fahrenheit temperatures), validation halts with a critical error before cleaning or analysis.
+* **Cleaning Pipeline**: Automatically converts sentinels (`-999`, `-9999`, `9999`) and impossible values to `NULL`, drops duplicate `(date, location)` keys keeping the most complete record, and linearly interpolates isolated gaps $\le 3$ calendar days. Rainfall is strictly preserved and never synthesized or interpolated.
+* **Known System Limits**:
+  - Location names are case- and whitespace-sensitive in Spark SQL (`"Mumbai"` != `"mumbai"`).
+  - Maintains a single active dataset in memory at a time; new uploads evict previous cached views.
+  - Multi-decadal trend regressions require $\ge 5$ complete calendar years; shorter spans report `insufficient data`.
+  - Automatic unit conversion is intentionally not performed to protect analytical integrity.
 
 ---
 

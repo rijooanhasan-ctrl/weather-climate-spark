@@ -96,7 +96,7 @@ COLUMN_ALIASES: dict[str, list[str]] = {
     ],
     "temperature": [
         "temp", "temperature_c", "tavg", "meantemp", "avg_temp",
-        "temperature_2m_mean", "mean_temp", "temp_mean", "avg_temperature"
+        "temperature_2m_mean", "mean_temp", "mean_temperature", "temp_mean", "avg_temperature"
     ],
     "temp_max": [
         "max_temp", "temperature_max", "tmax", "temp_max_c",
@@ -115,11 +115,11 @@ COLUMN_ALIASES: dict[str, list[str]] = {
         "rel_humidity", "humidity_pct", "humidity_percent", "avg_humidity"
     ],
     "wind_speed": [
-        "wind", "windspeed", "wspd", "wind_speed_10m_mean",
+        "wind", "windspeed", "wspd", "wind_velocity", "wind_speed_10m_mean",
         "wind_speed_kmh", "mean_wind_speed", "wind_spd", "avg_wind_speed"
     ],
     "pressure": [
-        "pres", "atm_pressure", "meanpressure", "pressure_msl_mean",
+        "pres", "atm_pressure", "atmospheric_pressure", "meanpressure", "pressure_msl_mean",
         "sea_level_pressure", "pressure_hpa", "slp", "barometric_pressure"
     ],
 }
