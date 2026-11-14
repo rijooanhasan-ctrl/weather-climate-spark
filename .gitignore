@@ -27,6 +27,8 @@ data/raw/*
 data/processed/*
 data/uploads/*
 data/external/*
+data/scratch/
+weather_scale_*.csv
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/uploads/.gitkeep

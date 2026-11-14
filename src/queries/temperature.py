@@ -31,7 +31,7 @@ def temp_yearly(
     where_clause = build_where(filters)
     sql = f"""
     WITH base AS (
-        SELECT *
+        SELECT location, year, temperature, temp_max, temp_min
         FROM {view}
         WHERE {where_clause}
     ),
@@ -195,7 +195,7 @@ def temp_location_ranking(
     where_clause = build_where(filters)
     sql = f"""
     WITH base AS (
-        SELECT *
+        SELECT location, date, temperature, temp_max, temp_min
         FROM {view}
         WHERE {where_clause}
     ),
@@ -252,7 +252,7 @@ def temp_trend(
     where_clause = build_where(filters)
     sql = f"""
     WITH base AS (
-        SELECT *
+        SELECT location, year, temperature
         FROM {view}
         WHERE {where_clause}
     ),

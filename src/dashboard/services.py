@@ -20,6 +20,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
+import os
 from pathlib import Path
 import threading
 import time
@@ -426,6 +427,7 @@ def get_kpis(
         filters=filters,
         analysis_key="kpis_dict",
         params=None,
+        view=view,
     )
 
     def _compute() -> dict[str, Any]:
@@ -655,6 +657,7 @@ def get_analysis_frame(
         filters=filters,
         analysis_key=key,
         params=params,
+        view=view,
     )
 
     def _compute() -> AnalysisFrame:
@@ -806,6 +809,33 @@ def is_prefetching() -> bool:
         return _prefetch_active
 
 
+def are_insights_cached(
+    filters: Filters | None = None,
+    view: str = CLEAN_VIEW_NAME,
+) -> bool:
+    """Return True if all queries needed by insights are already cached in ResultCache."""
+    cache = ResultCache.get_instance()
+    version = ActiveDatasetStore.get_instance().version
+    needed_keys = [
+        "temp_location_ranking",
+        "temp_trend",
+        "rain_location_ranking",
+        "rain_seasonal",
+        "rain_unusual_months",
+        "extreme_events_yearly",
+        "heatwave_spells",
+        "correlations",
+        "rain_yearly",
+        "temp_yearly",
+        "kpi_summary",
+    ]
+    for k in needed_keys:
+        ck = ResultCache.build_key(version=version, filters=filters, analysis_key=k, view=view)
+        if not cache.contains(ck):
+            return False
+    return True
+
+
 def start_prefetch(
     spark: SparkSession,
     filters: Filters | None = None,
@@ -815,8 +845,13 @@ def start_prefetch(
     Launch a background daemon thread that eagerly warms ResultCache.
     Does not block caller. Computes KPIs, insight frames, then sections.
     """
+    if os.environ.get("SPARK_PREFETCH", "1").strip().lower() in ("0", "false", "no", "off"):
+        return
+
     global _prefetch_done, _prefetch_total, _prefetch_active
     with _prefetch_lock:
+        if _prefetch_active:
+            return
         _prefetch_done = 0
         _prefetch_total = 22
         _prefetch_active = True

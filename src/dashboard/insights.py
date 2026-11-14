@@ -97,6 +97,8 @@ def generate_insights(
                     level="info",
                     source_keys=["temp_location_ranking"],
                     evidence={
+                        "location": h_loc,
+                        "avg_temp": h_avg,
                         "hottest_location": h_loc,
                         "highest_avg_temp": h_avg,
                         "coldest_location": c_loc,
@@ -186,6 +188,10 @@ def generate_insights(
                 level="info",
                 source_keys=["kpi_summary"],
                 evidence={
+                    "location": max_loc,
+                    "date": max_d,
+                    "temp_max": max_t,
+                    "temp_min": min_t,
                     "record_max_temp": max_t,
                     "record_max_location": max_loc,
                     "record_max_date": max_d,
@@ -225,6 +231,9 @@ def generate_insights(
                     level="info",
                     source_keys=["rain_location_ranking"],
                     evidence={
+                        "location": w_loc,
+                        "avg_annual_rain": w_val,
+                        "complete_years_used": w_yrs,
                         "wettest_location": w_loc,
                         "highest_annual_rain_mm": w_val,
                         "wettest_month": w_m_name,
@@ -281,6 +290,8 @@ def generate_insights(
                     level="info",
                     source_keys=["rain_seasonal"],
                     evidence={
+                        "location": max_loc,
+                        "share_of_annual_pct": max_pct,
                         "highest_monsoon_location": max_loc,
                         "highest_monsoon_share_pct": max_pct,
                         "lowest_monsoon_location": min_loc,
@@ -340,10 +351,13 @@ def generate_insights(
                         evidence={
                             "unusual_months_count": cnt,
                             "threshold_z": 2.0,
+                            "location": t_loc,
                             "most_extreme_location": t_loc,
                             "year": t_yr,
                             "month": m_name,
+                            "z_score": t_z,
                             "max_z_score": t_z,
+                            "total_rain": t_tot,
                             "total_rain_mm": t_tot,
                         },
                     )
@@ -364,7 +378,7 @@ def generate_insights(
 
             # Spell component
             spell_part = "no spells of at least 3 days were recorded"
-            spell_ev: dict[str, Any] = {"longest_spell_days": 0}
+            spell_ev: dict[str, Any] = {"longest_spell_days": 0, "min_spell_days": 3}
             if hw_df is not None and not hw_df.empty and "length_days" in hw_df.columns:
                 valid_hw = hw_df.dropna(subset=["length_days"])
                 if not valid_hw.empty:
@@ -379,6 +393,7 @@ def generate_insights(
                     )
                     spell_ev = {
                         "longest_spell_location": h_loc,
+                        "length_days": h_len,
                         "longest_spell_days": h_len,
                         "spell_start": h_st,
                         "peak_temp_max": h_peak,
@@ -394,8 +409,10 @@ def generate_insights(
                     level="info",
                     source_keys=["extreme_events_yearly", "heatwave_spells"],
                     evidence={
+                        "location": ev_loc,
                         "most_hot_days_location": ev_loc,
                         "year": ev_yr,
+                        "hot_days": ev_cnt,
                         "hot_days_count": ev_cnt,
                         **spell_ev,
                     },
@@ -417,11 +434,16 @@ def generate_insights(
                     category="extremes",
                     text=(
                         f"The highest frequency of heavy rainfall occurred in {r_loc} during {r_yr} "
-                        f"with {r_days} deluge days recorded."
+                        f"with {r_days} heavy-rain days recorded."
                     ),
                     level="info",
                     source_keys=["extreme_events_yearly"],
-                    evidence={"location": r_loc, "year": r_yr, "heavy_rain_days_count": r_days},
+                    evidence={
+                        "location": r_loc,
+                        "year": r_yr,
+                        "heavy_rain_days": r_days,
+                        "heavy_rain_days_count": r_days,
+                    },
                 )
             )
 
@@ -497,6 +519,9 @@ def generate_insights(
                         f"(N = {n_pairs:,} pairs).{seasonal_note} Correlation does not imply causation."
                     )
                     evidence: dict[str, Any] = {
+                        "var_x": vx1,
+                        "var_y": vy1,
+                        "r": r1,
                         "strongest_pair": f"{vx1} vs {vy1}",
                         "pearson_r": r1,
                         "second_pair": f"{vx2} vs {vy2}",

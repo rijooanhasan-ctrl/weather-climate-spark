@@ -56,13 +56,19 @@ class ResultCache:
         filters: Any,
         analysis_key: str,
         params: dict[str, Any] | None = None,
+        view: str = "",
     ) -> tuple:
         """
         Build a deterministic hashable cache key tuple.
         """
         f_repr = repr(filters) if filters is not None else ""
         p_repr = repr(sorted(params.items())) if params else ""
-        return (version, f_repr, analysis_key, p_repr)
+        return (version, view, f_repr, analysis_key, p_repr)
+
+    def contains(self, key: tuple) -> bool:
+        """Check if key is currently in the cache without triggering computation."""
+        with self._lock:
+            return key in self._cache
 
     def get_or_compute(self, key: tuple, compute_fn: Callable[[], T]) -> T:
         """

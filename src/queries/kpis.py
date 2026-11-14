@@ -41,8 +41,8 @@ def kpi_summary(
             MIN(date) AS raw_first_date,
             MAX(date) AS raw_last_date,
             ROUND(AVG(temperature), 2) AS avg_temp,
-            MAX(temp_max) AS max_temp_raw,
-            MIN(temp_min) AS min_temp_raw,
+            COALESCE(MAX(temp_max), MAX(temperature)) AS max_temp_raw,
+            COALESCE(MIN(temp_min), MIN(temperature)) AS min_temp_raw,
             ROUND(COALESCE(SUM(rainfall), 0.0), 2) AS total_rainfall_mm,
             ROUND(AVG(humidity), 2) AS avg_humidity,
             ROUND(AVG(wind_speed), 2) AS avg_wind_speed,
@@ -55,7 +55,7 @@ def kpi_summary(
             CAST(date AS STRING) AS max_temp_date,
             location AS max_temp_location
         FROM base
-        WHERE temp_max = (SELECT max_temp_raw FROM headline_aggs)
+        WHERE COALESCE(temp_max, temperature) = (SELECT max_temp_raw FROM headline_aggs)
         ORDER BY date ASC, location ASC
         LIMIT 1
     ),
@@ -64,7 +64,7 @@ def kpi_summary(
             CAST(date AS STRING) AS min_temp_date,
             location AS min_temp_location
         FROM base
-        WHERE temp_min = (SELECT min_temp_raw FROM headline_aggs)
+        WHERE COALESCE(temp_min, temperature) = (SELECT min_temp_raw FROM headline_aggs)
         ORDER BY date ASC, location ASC
         LIMIT 1
     ),
@@ -116,10 +116,10 @@ def kpi_summary(
         hy.hottest_year,
         h.interpolated_value_count
     FROM headline_aggs h
-    CROSS JOIN hottest_day t_hot
-    CROSS JOIN coldest_day t_cold
-    CROSS JOIN hottest_y hy
-    CROSS JOIN wettest_y wy
+    LEFT JOIN hottest_day t_hot ON 1 = 1
+    LEFT JOIN coldest_day t_cold ON 1 = 1
+    LEFT JOIN hottest_y hy ON 1 = 1
+    LEFT JOIN wettest_y wy ON 1 = 1
     """
     return run_query(
         spark=spark,

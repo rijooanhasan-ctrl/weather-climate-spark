@@ -212,11 +212,11 @@ def test_variant_v7_short_gap_filling(spark, tmp_path, real_slices):
 
 
 def test_variant_v8_mixed_case_spaces_location(spark, tmp_path, real_slices):
-    """V8: Location names with mixed case and surrounding spaces reported as separate locations."""
+    """V8: Location names with mixed case and surrounding spaces trimmed to 3 distinct locations."""
     header = list(real_slices["header"])
     loc_idx = header.index("location")
     rows = []
-    loc_variants = ["Mumbai", "mumbai", " Mumbai "]
+    loc_variants = [" MUMBAI ", " Mumbai ", " mumbai ", "Mumbai", "mumbai"]
     for i, r in enumerate(real_slices["rows"][:30]):
         rc = list(r)
         rc[loc_idx] = loc_variants[i % len(loc_variants)]
@@ -231,8 +231,8 @@ def test_variant_v8_mixed_case_spaces_location(spark, tmp_path, real_slices):
     load_res = load_dataset(spark, p)
     df_clean, _ = clean(spark, std_view=load_res.standardized_view, view_name="test_v8_clean")
     locs = [r["location"] for r in spark.sql("SELECT DISTINCT location FROM test_v8_clean").collect()]
-    assert len(locs) == 3
-    assert set(locs) == {"Mumbai", "mumbai", " Mumbai "}
+    assert len(set(locs)) == 3
+    assert set(locs) == {"MUMBAI", "Mumbai", "mumbai"}
 
 
 def test_variant_v9_yyyymmdd_spaced_headers(spark, tmp_path, real_slices):
@@ -345,3 +345,99 @@ def test_validator_merge_query_consistency(spark):
     assert report.info["total_rows"] == 46752
     assert report.info["duplicate_keys_count"] == 0
     assert len(report.column_stats) == 5
+
+
+def test_variant_v5_v6_insights(spark, tmp_path):
+    """Phase 10 A2: Variants produce insights; V5 trend says 'insufficient data' and V6 handles missing city rainfall."""
+    from scripts.make_variant_files import make_variants
+    from src.dashboard.services import get_insights
+    var_files = make_variants(tmp_path)
+
+    # Test V5
+    prep_v5 = prepare(spark, var_files["V5"], view_name="test_v5_clean_ins")
+    insights_v5 = get_insights(spark, filters=None, view="test_v5_clean_ins")
+    assert len(insights_v5) >= 8
+    trend_ins_v5 = [i for i in insights_v5 if "temp_trend" in i.source_keys][0]
+    assert "insufficient data" in trend_ins_v5.text.lower()
+    assert trend_ins_v5.level == "caution"
+
+    # Test V6
+    prep_v6 = prepare(spark, var_files["V6"], view_name="test_v6_clean_ins")
+    insights_v6 = get_insights(spark, filters=None, view="test_v6_clean_ins")
+    assert len(insights_v6) >= 8
+    rain_ins_v6 = [i for i in insights_v6 if "rain_location_ranking" in i.source_keys][0]
+    assert "Bengaluru" in rain_ins_v6.text
+
+
+def test_validator_old_vs_new_equality(spark, tmp_path):
+    """Phase 10 A5: Merged validator matches previous validator on defect fixtures and real data."""
+    import tools.validator_old as val_old
+    from src.validator import validate as val_new
+    from config.schema import STANDARD_SCHEMA
+    from src.data_loader import load_raw_csv, standardize
+
+    all_cols = [f.name for f in STANDARD_SCHEMA.fields]
+    all_mapping = {c: c for c in all_cols}
+
+    # Verify on real dataset
+    raw_real = load_raw_csv(spark, PRIMARY_DATASET_PATH, delimiter=",", view_name="test_raw_real_eq")
+    std_real = standardize(spark, raw_view="test_raw_real_eq", mapping=all_mapping, date_format="yyyy-MM-dd", view_name="test_std_real_eq")
+    rep_old = val_old.validate(spark, raw_view="test_raw_real_eq", std_view="test_std_real_eq", mapping=all_mapping, original_row_count=46752)
+    rep_new = val_new(spark, raw_view="test_raw_real_eq", std_view="test_std_real_eq", mapping=all_mapping, original_row_count=46752)
+
+    assert rep_old.errors == rep_new.errors
+    assert sorted(rep_old.warnings) == sorted(rep_new.warnings)
+    assert sorted(rep_old.column_stats, key=lambda x: x["column"]) == sorted(rep_new.column_stats, key=lambda x: x["column"])
+    for k in ["total_rows", "min_date", "max_date", "sentinel_counts", "numeric_parse_failures", "duplicate_keys_count", "null_counts", "out_of_range_counts"]:
+        assert rep_old.info.get(k) == rep_new.info.get(k)
+
+
+def test_scale_count_logic(spark, tmp_path):
+    """Phase 10 A6: Tiny 2x replica (two cities replicated once = 4 stations) verifies exact expected query counts."""
+    from src.queries.climate import climate_city_profile
+    from src.queries.temperature import temp_location_ranking
+
+    # Read two cities from primary dataset
+    selected_cities = {"Bengaluru", "Mumbai"}
+    rows_orig = []
+    with open(PRIMARY_DATASET_PATH, mode="r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        loc_idx = header.index("location")
+        for r in reader:
+            if r[loc_idx] in selected_cities:
+                rows_orig.append(r)
+
+    # Replicate selected cities once with suffix _1
+    rows_replica = []
+    for r in rows_orig:
+        r_rep = list(r)
+        r_rep[loc_idx] = f"{r[loc_idx]}_1"
+        rows_replica.append(r_rep)
+
+    test_csv = tmp_path / "scale_tiny_2x.csv"
+    with open(test_csv, mode="w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows_orig)
+        writer.writerows(rows_replica)
+
+    view_name = "test_scale_tiny_clean"
+    prepare(spark, str(test_csv), view_name=view_name)
+
+    ty_df = temp_yearly(spark, view=view_name).df
+    ry_df = rain_yearly(spark, view=view_name).df
+    tlr_df = temp_location_ranking(spark, view=view_name).df
+    ccp_df = climate_city_profile(spark, view=view_name).df
+    tt_df = temp_trend(spark, view=view_name).df
+    kpi_df = kpi_summary(spark, view=view_name).df
+
+    assert ty_df.count() == 4 * 16
+    assert ry_df.count() == 4 * 16
+    assert tlr_df.count() == 4
+    assert ccp_df.count() == 4
+    assert tt_df.count() == 4 + 1
+    assert kpi_df.count() == 1
+
+
+

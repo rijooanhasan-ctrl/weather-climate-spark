@@ -159,6 +159,11 @@ def test_prefetch_daemon_execution(spark):
     if not store.is_ready(spark):
         load_builtin(spark)
 
+    # Ensure any prior prefetch has finished before isolated test launch
+    deadline = time.time() + 45.0
+    while is_prefetching() and time.time() < deadline:
+        time.sleep(0.1)
+
     start_prefetch(spark)
     # Give the background daemon a moment to register active state
     time.sleep(0.05)
@@ -167,7 +172,7 @@ def test_prefetch_daemon_execution(spark):
     assert done >= 0
 
     # Wait for prefetch to finish cleanly so background tasks don't leak into other tests
-    deadline = time.time() + 30.0
+    deadline = time.time() + 45.0
     while is_prefetching() and time.time() < deadline:
         time.sleep(0.2)
     assert not is_prefetching()

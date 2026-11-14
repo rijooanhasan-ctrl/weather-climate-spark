@@ -135,10 +135,10 @@ BUILTIN_DATASET_LABEL: str = "Built-in dataset: 8 Indian cities, 2010-2025"
 NO_COLUMN_LABEL: str = "(not in file)"
 
 # ── Spark Optimization Settings ───────────────────────────────────────────────
-# Configurations are only adopted if they achieve a 3-run median speedup >= 10%
-# and verified identical results across all 22 analysis queries.
-# Phase 9 3x retest: baseline median 24.840s vs codegen_off 22.843s (+8.04% gain < 10% threshold).
-# Reverted to default Spark codegen configuration per Phase 9 decision rule.
+# Configurations are only adopted if they achieve a speedup >= 10% (or >= 20% for scheduler)
+# and verified identical results across all analysis queries without regressions.
+# Phase 10 B2.4 evaluation: FAIR scheduler improved 4-query microbenchmark but increased
+# end-to-end multi-query prefetch latency (> 30s) on Windows JVM. Reverted to Spark default (FIFO).
 SPARK_CONF: dict[str, str] = {}
 
 # ── Phase 7 Dashboard & Chart Constants ───────────────────────────────────────

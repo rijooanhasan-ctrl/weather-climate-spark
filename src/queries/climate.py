@@ -420,7 +420,7 @@ def heatwave_spells(
         GROUP BY location
     ),
     filtered_base AS (
-        SELECT *
+        SELECT location, date, temp_max
         FROM {view}
         WHERE {where_clause}
     ),

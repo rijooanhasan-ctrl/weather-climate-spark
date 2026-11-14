@@ -276,26 +276,47 @@ def render_sidebar(spark: SparkSession, store: ActiveDatasetStore) -> Filters | 
         st.session_state["sel_seasons"] = []
         st.rerun()
 
-    # Location selection
-    selected_locations = st.sidebar.multiselect(
-        "Locations",
-        options=all_locations,
-        default=st.session_state.get("sel_locations", all_locations),
-        key="sel_locations",
-    )
+    with st.sidebar.form(key="filters_form"):
+        # Location selection
+        selected_locations = st.multiselect(
+            "Locations",
+            options=all_locations,
+            default=st.session_state.get("sel_locations", all_locations),
+            key="sel_locations",
+        )
+
+        # Date range selection
+        date_val = st.date_input(
+            "Date range",
+            value=st.session_state.get("sel_dates", (min_date_val, max_date_val)),
+            min_value=min_date_val,
+            max_value=max_date_val,
+            key="sel_dates",
+        )
+
+        # Optional years
+        avail_years = options["years"]
+        selected_years = st.multiselect(
+            "Limit to specific years",
+            options=avail_years,
+            default=st.session_state.get("sel_years", []),
+            key="sel_years",
+        )
+
+        # Optional seasons
+        avail_seasons = options["seasons"]
+        selected_seasons = st.multiselect(
+            "Limit to seasons",
+            options=avail_seasons,
+            default=st.session_state.get("sel_seasons", []),
+            key="sel_seasons",
+        )
+
+        st.form_submit_button("Apply filters")
 
     if not selected_locations:
         st.warning("Select at least one location.")
         return None
-
-    # Date range selection
-    date_val = st.sidebar.date_input(
-        "Date range",
-        value=st.session_state.get("sel_dates", (min_date_val, max_date_val)),
-        min_value=min_date_val,
-        max_value=max_date_val,
-        key="sel_dates",
-    )
 
     start_date = None
     end_date = None
@@ -308,24 +329,6 @@ def render_sidebar(spark: SparkSession, store: ActiveDatasetStore) -> Filters | 
     elif isinstance(date_val, date):
         start_date = date_val
         end_date = date_val
-
-    # Optional years
-    avail_years = options["years"]
-    selected_years = st.sidebar.multiselect(
-        "Limit to specific years",
-        options=avail_years,
-        default=st.session_state.get("sel_years", []),
-        key="sel_years",
-    )
-
-    # Optional seasons
-    avail_seasons = options["seasons"]
-    selected_seasons = st.sidebar.multiselect(
-        "Limit to seasons",
-        options=avail_seasons,
-        default=st.session_state.get("sel_seasons", []),
-        key="sel_seasons",
-    )
 
     try:
         filters = build_filters(

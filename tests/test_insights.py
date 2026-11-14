@@ -219,3 +219,45 @@ def test_numbers_in_evidence_dict(base_kpis):
             assert any(abs(num - ev) < 0.05 for ev in evidence_vals if isinstance(ev, (int, float))), (
                 f"Number {tok} in text '{ins.text}' was not found in evidence {ins.evidence}"
             )
+
+
+def test_insights_match_independent_ground_truth(spark):
+    """
+    Phase 10 A1(e): Insights generated for the built-in dataset must match
+    independent ground-truth values computed with csv and statistics modules.
+    """
+    from src.dashboard.services import load_builtin, get_insights
+    load_builtin(spark)
+    insights = get_insights(spark, filters=None)
+    assert len(insights) >= 9
+
+    # 1. Hottest and coldest
+    rule1 = [i for i in insights if "temp_location_ranking" in i.source_keys][0]
+    assert rule1.evidence["hottest_location"] == "Chennai"
+    assert rule1.evidence["highest_avg_temp"] == 28.0
+    assert rule1.evidence["coldest_location"] == "Shillong"
+    assert rule1.evidence["lowest_avg_temp"] == 17.4
+
+    # 2. Record high and low
+    rule3 = [i for i in insights if "kpi_summary" in i.source_keys and "historical record high" in i.text][0]
+    assert rule3.evidence["record_max_temp"] == 46.6
+    assert rule3.evidence["record_max_location"] == "Jaipur"
+    assert rule3.evidence["record_max_date"] == "2024-05-27"
+    assert rule3.evidence["record_min_temp"] == 0.5
+    assert rule3.evidence["record_min_location"] == "Shillong"
+    assert rule3.evidence["record_min_date"] == "2023-01-19"
+
+    # 3. Wettest and driest
+    rule4 = [i for i in insights if "rain_location_ranking" in i.source_keys][0]
+    assert rule4.evidence["wettest_location"] == "Shillong"
+    assert rule4.evidence["highest_annual_rain_mm"] == 2507.1
+    assert rule4.evidence["wettest_month"] == "Jun"
+    assert rule4.evidence["driest_location"] == "Jaipur"
+    assert rule4.evidence["lowest_annual_rain_mm"] == 633.9
+
+    # 4. Heavy rain
+    rule8 = [i for i in insights if "extreme_events_yearly" in i.source_keys and "heavy-rain days" in i.text][0]
+    assert rule8.evidence["location"] == "Shillong"
+    assert rule8.evidence["year"] == 2015
+    assert rule8.evidence["heavy_rain_days"] == 16
+

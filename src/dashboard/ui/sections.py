@@ -45,6 +45,7 @@ from src.dashboard.charts import (
 from src.dashboard.services import (
     ActiveDatasetStore,
     AnalysisFrame,
+    are_insights_cached,
     get_analysis_frame,
     get_insights,
     get_kpis,
@@ -118,9 +119,21 @@ def render_overview_section(spark: SparkSession, store: ActiveDatasetStore, filt
     render_kpi_scorecard(kpi)
 
     # 2. Key findings from get_insights
-    with st.spinner("Synthesizing climate insights from Spark SQL results..."):
-        insights = _cached_insights(store.version, f_str, spark, clean_view, filters)
-    render_insights(insights)
+    insights_ready = are_insights_cached(filters=filters, view=clean_view)
+    compute_insights_key = f"compute_insights_{store.version}_{f_str}"
+    should_compute_insights = insights_ready or st.session_state.get(compute_insights_key, False)
+
+    if should_compute_insights:
+        with st.spinner("Synthesizing climate insights from Spark SQL results..."):
+            insights = _cached_insights(store.version, f_str, spark, clean_view, filters)
+        render_insights(insights)
+    else:
+        st.markdown("---")
+        st.subheader("💡 Key Findings")
+        st.caption("Key findings synthesize patterns across 10 analytical models.")
+        if st.button("Compute key findings for this selection", key=f"btn_{compute_insights_key}"):
+            st.session_state[compute_insights_key] = True
+            st.rerun()
 
     st.markdown("---")
     st.subheader("📊 Headline Climate Visualizations")
@@ -175,59 +188,82 @@ def render_temperature_section(spark: SparkSession, store: ActiveDatasetStore, f
     f_str = _filters_repr(filters)
     active_locs = filters.locations or []
 
-    # 1. temp_yearly
-    f_yearly = _cached_analysis_frame(store.version, f_str, "temp_yearly", None, spark, clean_view, filters)
-    fig_yearly = build_temp_yearly(f_yearly.df)
-    render_analysis("temp_yearly", f_yearly, fig=fig_yearly)
-
-    st.markdown("---")
-
-    # 2. temp_monthly_climatology
-    f_clim = _cached_analysis_frame(store.version, f_str, "temp_monthly_climatology", None, spark, clean_view, filters)
-    fig_clim = build_temp_monthly_climatology(f_clim.df)
-    render_analysis("temp_monthly_climatology", f_clim, fig=fig_clim)
-
-    st.markdown("---")
-
-    # 3. temp_monthly_series (Single station drilldown)
-    col_sel, _ = st.columns([2, 4])
-    with col_sel:
-        target_loc = st.selectbox(
-            "Select Station for Chronological Series",
-            options=active_locs,
-            key="sel_temp_series_loc",
-        )
-    f_series = _cached_analysis_frame(store.version, f_str, "temp_monthly_series", None, spark, clean_view, filters)
-    fig_series = build_temp_monthly_series(f_series.df, location=target_loc)
-    render_analysis("temp_monthly_series", f_series, fig=fig_series)
-
-    st.markdown("---")
-
-    # 4. temp_location_ranking
-    f_rank = _cached_analysis_frame(store.version, f_str, "temp_location_ranking", None, spark, clean_view, filters)
-    fig_rank = build_temp_location_ranking(f_rank.df)
-    render_analysis("temp_location_ranking", f_rank, fig=fig_rank)
-
-    st.markdown("---")
-
-    # 5. temp_trend
-    f_trend = _cached_analysis_frame(store.version, f_str, "temp_trend", None, spark, clean_view, filters)
-    # Pass yearly points if available for scatter overlay
-    fig_trend, stats_table = build_temp_trend(f_trend.df, yearly_points_df=f_yearly.df)
-    render_analysis(
+    analysis_options = [
+        "Show all analyses",
+        "temp_yearly",
+        "temp_monthly_climatology",
+        "temp_monthly_series",
+        "temp_location_ranking",
         "temp_trend",
-        f_trend,
-        fig=fig_trend,
-        extra_table=stats_table,
-        help_note="Trend lines represent least-squares regression slopes (regr_slope) computed by Spark SQL across complete years.",
+        "temp_seasonal",
+    ]
+    chosen = st.selectbox(
+        "Choose analysis (or show all)",
+        options=analysis_options,
+        key="sel_analysis_temperature",
     )
 
-    st.markdown("---")
+    f_yearly = None
+
+    # 1. temp_yearly
+    if chosen in ("Show all analyses", "temp_yearly"):
+        f_yearly = _cached_analysis_frame(store.version, f_str, "temp_yearly", None, spark, clean_view, filters)
+        fig_yearly = build_temp_yearly(f_yearly.df)
+        render_analysis("temp_yearly", f_yearly, fig=fig_yearly)
+        if chosen == "Show all analyses":
+            st.markdown("---")
+
+    # 2. temp_monthly_climatology
+    if chosen in ("Show all analyses", "temp_monthly_climatology"):
+        f_clim = _cached_analysis_frame(store.version, f_str, "temp_monthly_climatology", None, spark, clean_view, filters)
+        fig_clim = build_temp_monthly_climatology(f_clim.df)
+        render_analysis("temp_monthly_climatology", f_clim, fig=fig_clim)
+        if chosen == "Show all analyses":
+            st.markdown("---")
+
+    # 3. temp_monthly_series (Single station drilldown)
+    if chosen in ("Show all analyses", "temp_monthly_series"):
+        col_sel, _ = st.columns([2, 4])
+        with col_sel:
+            target_loc = st.selectbox(
+                "Select Station for Chronological Series",
+                options=active_locs,
+                key="sel_temp_series_loc",
+            )
+        f_series = _cached_analysis_frame(store.version, f_str, "temp_monthly_series", None, spark, clean_view, filters)
+        fig_series = build_temp_monthly_series(f_series.df, location=target_loc)
+        render_analysis("temp_monthly_series", f_series, fig=fig_series)
+        if chosen == "Show all analyses":
+            st.markdown("---")
+
+    # 4. temp_location_ranking
+    if chosen in ("Show all analyses", "temp_location_ranking"):
+        f_rank = _cached_analysis_frame(store.version, f_str, "temp_location_ranking", None, spark, clean_view, filters)
+        fig_rank = build_temp_location_ranking(f_rank.df)
+        render_analysis("temp_location_ranking", f_rank, fig=fig_rank)
+        if chosen == "Show all analyses":
+            st.markdown("---")
+
+    # 5. temp_trend
+    if chosen in ("Show all analyses", "temp_trend"):
+        f_trend = _cached_analysis_frame(store.version, f_str, "temp_trend", None, spark, clean_view, filters)
+        yearly_df = f_yearly.df if f_yearly is not None else None
+        fig_trend, stats_table = build_temp_trend(f_trend.df, yearly_points_df=yearly_df)
+        render_analysis(
+            "temp_trend",
+            f_trend,
+            fig=fig_trend,
+            extra_table=stats_table,
+            help_note="Trend lines represent least-squares regression slopes (regr_slope) computed by Spark SQL across complete years.",
+        )
+        if chosen == "Show all analyses":
+            st.markdown("---")
 
     # 6. temp_seasonal
-    f_season = _cached_analysis_frame(store.version, f_str, "temp_seasonal", None, spark, clean_view, filters)
-    fig_season = build_temp_seasonal(f_season.df)
-    render_analysis("temp_seasonal", f_season, fig=fig_season)
+    if chosen in ("Show all analyses", "temp_seasonal"):
+        f_season = _cached_analysis_frame(store.version, f_str, "temp_seasonal", None, spark, clean_view, filters)
+        fig_season = build_temp_seasonal(f_season.df)
+        render_analysis("temp_seasonal", f_season, fig=fig_season)
 
 
 # =============================================================================
@@ -243,79 +279,102 @@ def render_rainfall_section(spark: SparkSession, store: ActiveDatasetStore, filt
     f_str = _filters_repr(filters)
     active_locs = filters.locations or []
 
-    # 1. rain_yearly
-    f_yearly = _cached_analysis_frame(store.version, f_str, "rain_yearly", None, spark, clean_view, filters)
-    fig_yearly = build_rain_yearly(f_yearly.df)
-    render_analysis("rain_yearly", f_yearly, fig=fig_yearly)
-
-    st.markdown("---")
-
-    # 2. rain_monthly (Station Heatmap)
-    col_sel, _ = st.columns([2, 4])
-    with col_sel:
-        target_rain_loc = st.selectbox(
-            "Select Station for Monthly Rainfall Heatmap",
-            options=active_locs,
-            key="sel_rain_monthly_loc",
-        )
-    f_monthly = _cached_analysis_frame(store.version, f_str, "rain_monthly", None, spark, clean_view, filters)
-    fig_monthly = build_rain_monthly(f_monthly.df, location=target_rain_loc)
-    render_analysis("rain_monthly", f_monthly, fig=fig_monthly)
-
-    st.markdown("---")
-
-    # 3. rain_monthly_climatology
-    f_clim = _cached_analysis_frame(store.version, f_str, "rain_monthly_climatology", None, spark, clean_view, filters)
-    fig_clim = build_rain_monthly_climatology(f_clim.df)
-    render_analysis("rain_monthly_climatology", f_clim, fig=fig_clim)
-
-    st.markdown("---")
-
-    # 4. rain_location_ranking
-    f_rank = _cached_analysis_frame(store.version, f_str, "rain_location_ranking", None, spark, clean_view, filters)
-    fig_rank = build_rain_location_ranking(f_rank.df)
-    render_analysis("rain_location_ranking", f_rank, fig=fig_rank)
-
-    st.markdown("---")
-
-    # 5. rain_seasonal
-    f_season = _cached_analysis_frame(store.version, f_str, "rain_seasonal", None, spark, clean_view, filters)
-    fig_season = build_rain_seasonal(f_season.df)
-    render_analysis("rain_seasonal", f_season, fig=fig_season)
-
-    st.markdown("---")
-
-    # 6. rain_unusual_months
-    col_z, _ = st.columns([2, 4])
-    with col_z:
-        target_z_loc = st.selectbox(
-            "Select Station for Standardized Anomaly (Z-Score)",
-            options=active_locs,
-            key="sel_rain_z_loc",
-        )
-    f_unusual = _cached_analysis_frame(store.version, f_str, "rain_unusual_months", None, spark, clean_view, filters)
-    fig_unusual, flagged_table = build_rain_unusual_months(f_unusual.df, location=target_z_loc)
-    render_analysis(
+    analysis_options = [
+        "Show all analyses",
+        "rain_yearly",
+        "rain_monthly",
+        "rain_monthly_climatology",
+        "rain_location_ranking",
+        "rain_seasonal",
         "rain_unusual_months",
-        f_unusual,
-        fig=fig_unusual,
-        extra_table=flagged_table,
-        help_note="Statistically unusual rainfall is flagged when monthly precipitation exceeds 2.0 standard deviations (Z >= 2.0) above the station-month mean.",
+        "rain_heavy_days",
+    ]
+    chosen = st.selectbox(
+        "Choose analysis (or show all)",
+        options=analysis_options,
+        key="sel_analysis_rainfall",
     )
 
-    st.markdown("---")
+    # 1. rain_yearly
+    if chosen in ("Show all analyses", "rain_yearly"):
+        f_yearly = _cached_analysis_frame(store.version, f_str, "rain_yearly", None, spark, clean_view, filters)
+        fig_yearly = build_rain_yearly(f_yearly.df)
+        render_analysis("rain_yearly", f_yearly, fig=fig_yearly)
+        if chosen == "Show all analyses":
+            st.markdown("---")
+
+    # 2. rain_monthly (Station Heatmap)
+    if chosen in ("Show all analyses", "rain_monthly"):
+        col_sel, _ = st.columns([2, 4])
+        with col_sel:
+            target_rain_loc = st.selectbox(
+                "Select Station for Monthly Rainfall Heatmap",
+                options=active_locs,
+                key="sel_rain_monthly_loc",
+            )
+        f_monthly = _cached_analysis_frame(store.version, f_str, "rain_monthly", None, spark, clean_view, filters)
+        fig_monthly = build_rain_monthly(f_monthly.df, location=target_rain_loc)
+        render_analysis("rain_monthly", f_monthly, fig=fig_monthly)
+        if chosen == "Show all analyses":
+            st.markdown("---")
+
+    # 3. rain_monthly_climatology
+    if chosen in ("Show all analyses", "rain_monthly_climatology"):
+        f_clim = _cached_analysis_frame(store.version, f_str, "rain_monthly_climatology", None, spark, clean_view, filters)
+        fig_clim = build_rain_monthly_climatology(f_clim.df)
+        render_analysis("rain_monthly_climatology", f_clim, fig=fig_clim)
+        if chosen == "Show all analyses":
+            st.markdown("---")
+
+    # 4. rain_location_ranking
+    if chosen in ("Show all analyses", "rain_location_ranking"):
+        f_rank = _cached_analysis_frame(store.version, f_str, "rain_location_ranking", None, spark, clean_view, filters)
+        fig_rank = build_rain_location_ranking(f_rank.df)
+        render_analysis("rain_location_ranking", f_rank, fig=fig_rank)
+        if chosen == "Show all analyses":
+            st.markdown("---")
+
+    # 5. rain_seasonal
+    if chosen in ("Show all analyses", "rain_seasonal"):
+        f_season = _cached_analysis_frame(store.version, f_str, "rain_seasonal", None, spark, clean_view, filters)
+        fig_season = build_rain_seasonal(f_season.df)
+        render_analysis("rain_seasonal", f_season, fig=fig_season)
+        if chosen == "Show all analyses":
+            st.markdown("---")
+
+    # 6. rain_unusual_months
+    if chosen in ("Show all analyses", "rain_unusual_months"):
+        col_z, _ = st.columns([2, 4])
+        with col_z:
+            target_z_loc = st.selectbox(
+                "Select Station for Standardized Anomaly (Z-Score)",
+                options=active_locs,
+                key="sel_rain_z_loc",
+            )
+        f_unusual = _cached_analysis_frame(store.version, f_str, "rain_unusual_months", None, spark, clean_view, filters)
+        fig_unusual, flagged_table = build_rain_unusual_months(f_unusual.df, location=target_z_loc)
+        render_analysis(
+            "rain_unusual_months",
+            f_unusual,
+            fig=fig_unusual,
+            extra_table=flagged_table,
+            help_note="Statistically unusual rainfall is flagged when monthly precipitation exceeds 2.0 standard deviations (Z >= 2.0) above the station-month mean.",
+        )
+        if chosen == "Show all analyses":
+            st.markdown("---")
 
     # 7. rain_heavy_days
-    col_h, _ = st.columns([2, 4])
-    with col_h:
-        target_h_loc = st.selectbox(
-            "Select Station for Heavy Rainfall Frequency",
-            options=active_locs,
-            key="sel_rain_heavy_loc",
-        )
-    f_heavy = _cached_analysis_frame(store.version, f_str, "rain_heavy_days", None, spark, clean_view, filters)
-    fig_heavy = build_rain_heavy_days(f_heavy.df, location=target_h_loc)
-    render_analysis("rain_heavy_days", f_heavy, fig=fig_heavy)
+    if chosen in ("Show all analyses", "rain_heavy_days"):
+        col_h, _ = st.columns([2, 4])
+        with col_h:
+            target_h_loc = st.selectbox(
+                "Select Station for Heavy Rainfall Frequency",
+                options=active_locs,
+                key="sel_rain_heavy_loc",
+            )
+        f_heavy = _cached_analysis_frame(store.version, f_str, "rain_heavy_days", None, spark, clean_view, filters)
+        fig_heavy = build_rain_heavy_days(f_heavy.df, location=target_h_loc)
+        render_analysis("rain_heavy_days", f_heavy, fig=fig_heavy)
 
 
 # =============================================================================
@@ -331,132 +390,157 @@ def render_climate_section(spark: SparkSession, store: ActiveDatasetStore, filte
     f_str = _filters_repr(filters)
     active_locs = filters.locations or []
 
-    # 1. climate_year_profile
-    f_yprof = _cached_analysis_frame(store.version, f_str, "climate_year_profile", None, spark, clean_view, filters)
-    render_analysis("climate_year_profile", f_yprof)
+    analysis_options = [
+        "Show all analyses",
+        "climate_year_profile",
+        "climate_year_comparison",
+        "climate_city_profile",
+        "extreme_thresholds",
+        "extreme_events_yearly",
+        "extreme_top_events",
+        "heatwave_spells",
+        "correlations",
+    ]
+    chosen = st.selectbox(
+        "Choose analysis (or show all)",
+        options=analysis_options,
+        key="sel_analysis_climate",
+    )
 
-    st.markdown("---")
+    # 1. climate_year_profile
+    if chosen in ("Show all analyses", "climate_year_profile"):
+        f_yprof = _cached_analysis_frame(store.version, f_str, "climate_year_profile", None, spark, clean_view, filters)
+        render_analysis("climate_year_profile", f_yprof)
+        if chosen == "Show all analyses":
+            st.markdown("---")
 
     # 2. climate_year_comparison (Year A vs Year B selectors)
-    avail_years = list(range(2010, 2026))
-    cA, cB, _ = st.columns([2, 2, 4])
-    with cA:
-        yr_a = st.selectbox("Baseline Year (A)", options=avail_years, index=5, key="sel_cmp_yr_a")  # 2015
-    with cB:
-        yr_b = st.selectbox("Comparison Year (B)", options=avail_years, index=10, key="sel_cmp_yr_b")  # 2020
+    if chosen in ("Show all analyses", "climate_year_comparison"):
+        avail_years = list(range(2010, 2026))
+        cA, cB, _ = st.columns([2, 2, 4])
+        with cA:
+            yr_a = st.selectbox("Baseline Year (A)", options=avail_years, index=5, key="sel_cmp_yr_a")  # 2015
+        with cB:
+            yr_b = st.selectbox("Comparison Year (B)", options=avail_years, index=10, key="sel_cmp_yr_b")  # 2020
 
-    cmp_params = (("year_a", yr_a), ("year_b", yr_b))
-    f_cmp = _cached_analysis_frame(store.version, f_str, "climate_year_comparison", cmp_params, spark, clean_view, filters)
-    fig_cmp = build_climate_year_comparison(f_cmp.df, year_a=yr_a, year_b=yr_b)
-    render_analysis("climate_year_comparison", f_cmp, fig=fig_cmp, extra_table=f_cmp.df)
-
-    st.markdown("---")
+        cmp_params = (("year_a", yr_a), ("year_b", yr_b))
+        f_cmp = _cached_analysis_frame(store.version, f_str, "climate_year_comparison", cmp_params, spark, clean_view, filters)
+        fig_cmp = build_climate_year_comparison(f_cmp.df, year_a=yr_a, year_b=yr_b)
+        render_analysis("climate_year_comparison", f_cmp, fig=fig_cmp, extra_table=f_cmp.df)
+        if chosen == "Show all analyses":
+            st.markdown("---")
 
     # 3. climate_city_profile (Metric selector)
-    metric_options = {
-        "avg_temp": "Average Temperature (°C)",
-        "annual_rainfall_equiv": "Annual Rainfall Equivalent (mm)",
-        "avg_humidity": "Average Humidity (%)",
-        "avg_wind_speed": "Average Wind Speed (km/h)",
-        "avg_pressure": "Average Pressure (hPa)",
-        "rainy_days_per_year": "Rainy Days Per Year",
-    }
-    c_m, _ = st.columns([3, 4])
-    with c_m:
-        chosen_metric = st.selectbox(
-            "Select Metric to Rank Stations",
-            options=list(metric_options.keys()),
-            format_func=lambda x: metric_options[x],
-            key="sel_city_prof_metric",
-        )
-    f_cprof = _cached_analysis_frame(store.version, f_str, "climate_city_profile", None, spark, clean_view, filters)
-    fig_cprof = build_climate_city_profile(f_cprof.df, metric=chosen_metric)
-    render_analysis("climate_city_profile", f_cprof, fig=fig_cprof, extra_table=f_cprof.df)
-
-    st.markdown("---")
+    if chosen in ("Show all analyses", "climate_city_profile"):
+        metric_options = {
+            "avg_temp": "Average Temperature (°C)",
+            "annual_rainfall_equiv": "Annual Rainfall Equivalent (mm)",
+            "avg_humidity": "Average Humidity (%)",
+            "avg_wind_speed": "Average Wind Speed (km/h)",
+            "avg_pressure": "Average Pressure (hPa)",
+            "rainy_days_per_year": "Rainy Days Per Year",
+        }
+        c_m, _ = st.columns([3, 4])
+        with c_m:
+            chosen_metric = st.selectbox(
+                "Select Metric to Rank Stations",
+                options=list(metric_options.keys()),
+                format_func=lambda x: metric_options[x],
+                key="sel_city_prof_metric",
+            )
+        f_cprof = _cached_analysis_frame(store.version, f_str, "climate_city_profile", None, spark, clean_view, filters)
+        fig_cprof = build_climate_city_profile(f_cprof.df, metric=chosen_metric)
+        render_analysis("climate_city_profile", f_cprof, fig=fig_cprof, extra_table=f_cprof.df)
+        if chosen == "Show all analyses":
+            st.markdown("---")
 
     # 4. extreme_thresholds
-    f_thresh = _cached_analysis_frame(store.version, f_str, "extreme_thresholds", None, spark, clean_view, filters)
-    render_analysis(
-        "extreme_thresholds",
-        f_thresh,
-        help_note="Notice: Statistical 95th/5th percentile thresholds are established across the entire multi-year historical dataset to ensure stable climatological baselines.",
-    )
-
-    st.markdown("---")
+    if chosen in ("Show all analyses", "extreme_thresholds"):
+        f_thresh = _cached_analysis_frame(store.version, f_str, "extreme_thresholds", None, spark, clean_view, filters)
+        render_analysis(
+            "extreme_thresholds",
+            f_thresh,
+            help_note="Notice: Statistical 95th/5th percentile thresholds are established across the entire multi-year historical dataset to ensure stable climatological baselines.",
+        )
+        if chosen == "Show all analyses":
+            st.markdown("---")
 
     # 5. extreme_events_yearly (Metric selector)
-    ev_options = {
-        "hot_days": "Hot Days (temp_max >= 95th percentile)",
-        "cold_days": "Cold Days (temp_min <= 5th percentile)",
-        "extreme_rain_days": "Extreme Rain Days (rain >= 95th percentile of wet days)",
-        "heavy_rain_days": "Heavy Rain Days (rain >= 64.5 mm)",
-    }
-    c_ev, _ = st.columns([3, 4])
-    with c_ev:
-        chosen_ev_metric = st.selectbox(
-            "Select Extreme Event Metric",
-            options=list(ev_options.keys()),
-            format_func=lambda x: ev_options[x],
-            key="sel_ev_metric",
-        )
-    f_ev = _cached_analysis_frame(store.version, f_str, "extreme_events_yearly", None, spark, clean_view, filters)
-    fig_ev = build_extreme_events_yearly(f_ev.df, metric=chosen_ev_metric)
-    render_analysis("extreme_events_yearly", f_ev, fig=fig_ev)
-
-    st.markdown("---")
+    if chosen in ("Show all analyses", "extreme_events_yearly"):
+        ev_options = {
+            "hot_days": "Hot Days (temp_max >= 95th percentile)",
+            "cold_days": "Cold Days (temp_min <= 5th percentile)",
+            "extreme_rain_days": "Extreme Rain Days (rain >= 95th percentile of wet days)",
+            "heavy_rain_days": "Heavy Rain Days (rain >= 64.5 mm)",
+        }
+        c_ev, _ = st.columns([3, 4])
+        with c_ev:
+            chosen_ev_metric = st.selectbox(
+                "Select Extreme Event Metric",
+                options=list(ev_options.keys()),
+                format_func=lambda x: ev_options[x],
+                key="sel_ev_metric",
+            )
+        f_ev = _cached_analysis_frame(store.version, f_str, "extreme_events_yearly", None, spark, clean_view, filters)
+        fig_ev = build_extreme_events_yearly(f_ev.df, metric=chosen_ev_metric)
+        render_analysis("extreme_events_yearly", f_ev, fig=fig_ev)
+        if chosen == "Show all analyses":
+            st.markdown("---")
 
     # 6. extreme_top_events (Top-N slider)
-    c_n, _ = st.columns([2, 5])
-    with c_n:
-        top_n = st.slider("Number of Top Events (N)", min_value=5, max_value=30, value=TOP_N_DEFAULT, key="sld_top_n")
-    top_params = (("n", top_n),)
-    f_top = _cached_analysis_frame(store.version, f_str, "extreme_top_events", top_params, spark, clean_view, filters)
-    render_analysis("extreme_top_events", f_top)
-
-    st.markdown("---")
+    if chosen in ("Show all analyses", "extreme_top_events"):
+        c_n, _ = st.columns([2, 5])
+        with c_n:
+            top_n = st.slider("Number of Top Events (N)", min_value=5, max_value=30, value=TOP_N_DEFAULT, key="sld_top_n")
+        top_params = (("n", top_n),)
+        f_top = _cached_analysis_frame(store.version, f_str, "extreme_top_events", top_params, spark, clean_view, filters)
+        render_analysis("extreme_top_events", f_top)
+        if chosen == "Show all analyses":
+            st.markdown("---")
 
     # 7. heatwave_spells
-    f_hw = _cached_analysis_frame(store.version, f_str, "heatwave_spells", None, spark, clean_view, filters)
-    fig_hw = build_heatwave_spells(f_hw.df)
-    render_analysis(
-        "heatwave_spells",
-        f_hw,
-        fig=fig_hw,
-        extra_table=f_hw.df,
-        help_note="Discovered via Spark SQL gaps-and-islands window pattern (DATE_SUB on ROW_NUMBER). A heatwave spell requires >= 3 consecutive days breaching the station hot threshold.",
-    )
-
-    st.markdown("---")
+    if chosen in ("Show all analyses", "heatwave_spells"):
+        f_hw = _cached_analysis_frame(store.version, f_str, "heatwave_spells", None, spark, clean_view, filters)
+        fig_hw = build_heatwave_spells(f_hw.df)
+        render_analysis(
+            "heatwave_spells",
+            f_hw,
+            fig=fig_hw,
+            extra_table=f_hw.df,
+            help_note="Discovered via Spark SQL gaps-and-islands window pattern (DATE_SUB on ROW_NUMBER). A heatwave spell requires >= 3 consecutive days breaching the station hot threshold.",
+        )
+        if chosen == "Show all analyses":
+            st.markdown("---")
 
     # 8. correlations (Mode & Scope selectors)
-    c_mode, c_scope = st.columns([2, 2])
-    with c_mode:
-        corr_mode = st.radio(
-            "Correlation Mode",
-            options=["raw", "anomaly"],
-            format_func=lambda x: "Raw Observations" if x == "raw" else "Deseasonalized Anomalies",
-            key="rad_corr_mode",
-            horizontal=True,
-        )
-    with c_scope:
-        scope_options = ["all"] + active_locs
-        corr_scope = st.selectbox(
-            "Correlation Scope",
-            options=scope_options,
-            format_func=lambda x: "All Stations" if x == "all" else f"Station: {x}",
-            key="sel_corr_scope",
-        )
+    if chosen in ("Show all analyses", "correlations"):
+        c_mode, c_scope = st.columns([2, 2])
+        with c_mode:
+            corr_mode = st.radio(
+                "Correlation Mode",
+                options=["raw", "anomaly"],
+                format_func=lambda x: "Raw Observations" if x == "raw" else "Deseasonalized Anomalies",
+                key="rad_corr_mode",
+                horizontal=True,
+            )
+        with c_scope:
+            scope_options = ["all"] + active_locs
+            corr_scope = st.selectbox(
+                "Correlation Scope",
+                options=scope_options,
+                format_func=lambda x: "All Stations" if x == "all" else f"Station: {x}",
+                key="sel_corr_scope",
+            )
 
-    corr_params = (("mode", corr_mode), ("scope", corr_scope))
-    f_corr = _cached_analysis_frame(store.version, f_str, "correlations", corr_params, spark, clean_view, filters)
-    fig_corr = build_correlations(f_corr.df, mode=corr_mode, scope=corr_scope)
-    render_analysis(
-        "correlations",
-        f_corr,
-        fig=fig_corr,
-        help_note="Notice: Anomaly mode removes the strong 12-month astronomical seasonal cycle by subtracting each station's monthly mean baseline before computing Pearson r. Correlation does not imply causation.",
-    )
+        corr_params = (("mode", corr_mode), ("scope", corr_scope))
+        f_corr = _cached_analysis_frame(store.version, f_str, "correlations", corr_params, spark, clean_view, filters)
+        fig_corr = build_correlations(f_corr.df, mode=corr_mode, scope=corr_scope)
+        render_analysis(
+            "correlations",
+            f_corr,
+            fig=fig_corr,
+            help_note="Notice: Anomaly mode removes the strong 12-month astronomical seasonal cycle by subtracting each station's monthly mean baseline before computing Pearson r. Correlation does not imply causation.",
+        )
 
 
 # =============================================================================

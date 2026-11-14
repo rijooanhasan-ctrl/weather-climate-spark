@@ -54,12 +54,18 @@ def test_app_smoke_built_in_flow():
     assert total_rec_metrics[0].value == "46,752"
 
     # 4. Assert Key Findings card renders >= 5 insights (info/warning boxes)
+    btn_compute = [b for b in at.button if "btn_compute_insights" in getattr(b, "key", "")]
+    if btn_compute:
+        btn_compute[0].click().run()
     info_and_warnings = [i.value for i in at.info] + [w.value for w in at.warning]
     assert len(info_and_warnings) >= 5, f"Expected at least 5 insight callouts, got {len(info_and_warnings)}"
 
-    # 5. Filter by only Mumbai
+    # 5. Filter by only Mumbai (submitted via sidebar filter form)
     loc_multiselect = at.sidebar.multiselect(key="sel_locations")
-    loc_multiselect.set_value(["Mumbai"]).run()
+    loc_multiselect.set_value(["Mumbai"])
+    apply_btns = [b for b in at.sidebar.button if b.label == "Apply filters"]
+    assert len(apply_btns) > 0, "Apply filters button not found in sidebar"
+    apply_btns[0].click().run()
 
     assert not at.exception
     mumbai_metrics = [m for m in at.metric if "Total Records" in m.label]
@@ -68,12 +74,17 @@ def test_app_smoke_built_in_flow():
     assert mumbai_metrics[0].value == "5,844"
 
     # Verify Mumbai insights are updated
+    btn_compute_mumbai = [b for b in at.button if "btn_compute_insights" in getattr(b, "key", "")]
+    if btn_compute_mumbai:
+        btn_compute_mumbai[0].click().run()
     mumbai_infos = [i.value for i in at.info]
     assert any("Mumbai" in inf for inf in mumbai_infos)
 
-    # 6. Deselect all locations
+    # 6. Deselect all locations (submitted via sidebar filter form)
     loc_multiselect = at.sidebar.multiselect(key="sel_locations")
-    loc_multiselect.set_value([]).run()
+    loc_multiselect.set_value([])
+    apply_btns = [b for b in at.sidebar.button if b.label == "Apply filters"]
+    apply_btns[0].click().run()
 
     assert not at.exception
     warning_texts = [w.value for w in at.warning]

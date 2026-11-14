@@ -170,9 +170,9 @@ def main() -> int:
             interpolated_temp = clean_rep.summary["values_changed"]["interpolated"].get("temperature", 0)
             print(f"    [VERIFIED] V7 short gaps interpolated ({interpolated_temp} values), long gaps untouched.")
         elif v_key == "V8":
-            locs = [r["location"] for r in spark.sql(f"SELECT DISTINCT location FROM {view_name}").collect()]
-            assert len(locs) > 1, f"Expected separate locations in V8, found {locs}"
-            print(f"    [VERIFIED] V8 mixed case/spaces preserved as separate locations: {locs}")
+            locs = sorted([r["location"] for r in spark.sql(f"SELECT DISTINCT location FROM {view_name}").collect()])
+            assert locs == ["MUMBAI", "Mumbai", "mumbai"], f"Expected 3 trimmed locations in V8, got {locs}"
+            print(f"    [VERIFIED] V8 trimmed 5 whitespace variants into 3 distinct case locations: {locs}")
         elif v_key == "V9":
             assert date_fmt == "yyyyMMdd"
             assert mapping.get("date") == "Observation Date"
@@ -180,7 +180,7 @@ def main() -> int:
 
         # Run all 22 analysis queries through services
         all_keys = list(ANALYSES_BY_KEY.keys())
-        filters = Filters(locations=[])
+        filters = None
         frames = fetch_many(spark, keys=all_keys, filters=filters, view=view_name, max_workers=4)
 
         query_errors = 0
@@ -199,7 +199,17 @@ def main() -> int:
         # Insights
         insights = get_insights(spark, filters=filters, view=view_name)
         insights_count = len(insights)
+        assert insights_count > 0, f"Expected insights > 0 for {v_key}, got 0"
         print(f"    [VERIFIED] All 22 analyses completed ({query_errors} errors), {insights_count} insights generated.")
+
+        if v_key == "V5":
+            print("    --- FULL INSIGHTS FOR V5 (Short 3-Year Record) ---")
+            for idx, ins in enumerate(insights, start=1):
+                print(f"    [{idx}] ({ins.category}, {ins.level}) {ins.text}")
+        elif v_key == "V6":
+            print("    --- FULL INSIGHTS FOR V6 (Missing Rainfall Column for One City) ---")
+            for idx, ins in enumerate(insights, start=1):
+                print(f"    [{idx}] ({ins.category}, {ins.level}) {ins.text}")
 
         results.append({
             "variant": v_key,

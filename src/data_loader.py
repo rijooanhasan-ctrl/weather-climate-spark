@@ -318,9 +318,9 @@ def standardize(
     raw_loc = mapping.get("location")
     if raw_loc:
         escaped_loc = quote_identifier(raw_loc)
-        select_clauses.append(f"CAST({escaped_loc} AS STRING) AS `location`")
+        select_clauses.append(f"TRIM(CAST({escaped_loc} AS STRING)) AS `location`")
     elif default_location is not None:
-        safe_loc = sql_string_literal(default_location)
+        safe_loc = sql_string_literal(default_location.strip())
         select_clauses.append(f"{safe_loc} AS `location`")
     else:
         select_clauses.append("CAST(NULL AS STRING) AS `location`")
